@@ -254,12 +254,36 @@ export default function FeedClient() {
     // We turn book/article into a text payload for now.
     let payloadText = p.text ?? "";
     if (p.kind === "book" && p.book) {
-      const by = p.book.author ? ` by ${p.book.author}` : "";
-      payloadText = `📚 ${p.book.title}${by}${payloadText ? ` — ${payloadText}` : ""}`;
+      await fetch("http://localhost:8080/api/ink/post-book", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: p.text ?? "",
+          book: {
+            title: p.book.title,
+            authors: p.book.author ? [p.book.author] : [],
+            link: p.article?.source ?? ""
+          }
+        }),
+      });
+      await loadTimeline(); // keep showing home feed; later we’ll add a custom feed
+      return;
     }
     if (p.kind === "article" && p.article) {
-      const from = p.article.source ? ` (${p.article.source})` : "";
-      payloadText = `📰 ${p.article.title}${from}${payloadText ? ` — ${payloadText}` : ""}`;
+      await fetch("http://localhost:8080/api/ink/post-article", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: p.text ?? "",
+          article: {
+            title: p.article.title,
+            url: p.article.source || "",   // in your UI 'source' holds URL today
+            source: ""                     // optional human label
+          }
+        }),
+      });
+      await loadTimeline();
+      return;
     }
 
     try {

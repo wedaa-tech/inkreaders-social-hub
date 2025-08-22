@@ -1,0 +1,33 @@
+{
+  "lexicon": 1,
+  "id": "com.inkreaders.book.post",
+  "defs": {
+    "record": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["createdAt", "book"],
+        "properties": {
+          "createdAt": { "type": "string", "format": "datetime" },
+          "text": { "type": "string", "maxLength": 3000 },
+          "facets": { "type": "array", "items": { "type": "ref", "ref": "app.bsky.richtext.facet" } },
+          "book": {
+            "type": "object",
+            "required": ["title"],
+            "properties": {
+              "title": { "type": "string", "maxLength": 512 },
+              "authors": { "type": "array", "items": { "type": "string" }, "maxLength": 8 },
+              "isbn10": { "type": "string" },
+              "isbn13": { "type": "string" },
+              "cover": { "type": "blob", "accept": ["image/*"], "maxSize": 2000000 },
+              "link": { "type": "string" }
+            }
+          },
+          "rating": { "type": "number", "minimum": 0, "maximum": 5 },
+          "progress": { "type": "number", "minimum": 0, "maximum": 100 }
+        }
+      }
+    }
+  }
+}
