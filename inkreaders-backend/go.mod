@@ -5,6 +5,7 @@ go 1.25
 require (
 	github.com/bluesky-social/indigo v0.0.0-20250813051257-8be102876fb7
 	github.com/go-chi/chi/v5 v5.2.2
+	github.com/go-chi/cors v1.2.2
 	github.com/jackc/pgx/v5 v5.7.5
 	github.com/joho/godotenv v1.5.1
 )

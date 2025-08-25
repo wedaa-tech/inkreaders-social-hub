@@ -36,6 +36,11 @@ func main() {
 
 	ix := indexer.New(agent, did, store)
 
+			// after login (both main.go files)
+	log.Printf("Logged in as DID=%s Handle=%s", did, cfg.Handle)
+	// after reading DB_DSN (both)
+	log.Printf("DB_DSN=%s", os.Getenv("DB_DSN"))
+
 	log.Println("mini indexer: polling every 20s (books & articles)")
 	ticker := time.NewTicker(20 * time.Second)
 	defer ticker.Stop()

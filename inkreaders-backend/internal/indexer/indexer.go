@@ -21,62 +21,58 @@ func New(agent *xrpc.Client, did string, store *db.Store) *Indexer {
 	return &Indexer{Agent: agent, DID: did, DB: store}
 }
 
-// Poll your own repo for latest book posts
+// replace the function body of PollBookPosts with this:
+// replace the function body of PollBookPosts with this:
 func (ix *Indexer) PollBookPosts(ctx context.Context, pageSize int) error {
-	cursor, _ := ix.DB.GetCursor(ctx, "poll:book")
+    // stateless: always fetch newest N
+    out, err := listRecordsRaw(ctx, ix.Agent, ix.DID, "com.inkreaders.book.post", "", int64(pageSize), true /*reverse*/ )
+    if err != nil {
+        return err
+    }
+    if len(out.Records) == 0 {
+        return nil
+    }
 
-	for {
-		out, err := listRecordsRaw(ctx, ix.Agent, ix.DID, "com.inkreaders.book.post", cursor, int64(pageSize), false)
-		if err != nil {
-			return err
-		}
-		if len(out.Records) == 0 {
-			return nil
-		}
+    for _, rec := range out.Records {
+        uri := rec.Uri
+        cid := rec.Cid
+        did := ix.DID
+        val := rec.Value
 
-		for _, rec := range out.Records {
-			uri := rec.Uri
-			cid := rec.Cid
-			did := ix.DID
+        // createdAt (robust)
+        tstr := get(val, "createdAt")
+        createdAt, err := time.Parse(time.RFC3339, tstr)
+        if err != nil || tstr == "" {
+            if t2, e2 := time.Parse(time.RFC3339Nano, tstr); e2 == nil {
+                createdAt = t2
+            } else {
+                createdAt = time.Now().UTC()
+            }
+        }
 
-			val := rec.Value
+        text := get(val, "text")
+        title := get(val, "book.title")
+        authors := getStringSlice(val, "book.authors")
+        isbn10 := get(val, "book.isbn10")
+        isbn13 := get(val, "book.isbn13")
+        link := get(val, "book.link")
 
-			createdAt, _ := time.Parse(time.RFC3339, get(val, "createdAt"))
-			text := get(val, "text")
-			bookTitle := get(val, "book.title")
-			authors := getStringSlice(val, "book.authors")
-			isbn10 := get(val, "book.isbn10")
-			isbn13 := get(val, "book.isbn13")
-			link := get(val, "book.link")
+        var bookID *int64
+        if title != "" {
+            id, err := ix.DB.UpsertBook(ctx, title, authors, isbn10, isbn13, link)
+            if err == nil { bookID = &id }
+        }
 
-			var bookID *int64
-			if bookTitle != "" {
-				id, err := ix.DB.UpsertBook(ctx, bookTitle, authors, isbn10, isbn13, link)
-				if err != nil {
-					log.Println("UpsertBook:", err)
-				} else {
-					bookID = &id
-				}
-			}
+        var ratingPtr, progressPtr *float64
+        if v, ok := getFloat(val, "rating"); ok { ratingPtr = &v }
+        if v, ok := getFloat(val, "progress"); ok { progressPtr = &v }
 
-			var ratingPtr, progressPtr *float64
-			if v, ok := getFloat(val, "rating"); ok { ratingPtr = &v }
-			if v, ok := getFloat(val, "progress"); ok { progressPtr = &v }
-
-			if err := ix.DB.UpsertBookPost(ctx, uri, cid, did, createdAt, text, bookID, ratingPtr, progressPtr); err != nil {
-				log.Println("UpsertBookPost:", err)
-			}
-		}
-
-		if out.Cursor != nil {
-			cursor = *out.Cursor
-			if err := ix.DB.SetCursor(ctx, "poll:book", cursor); err != nil {
-				log.Println("SetCursor book:", err)
-			}
-		} else {
-			return nil
-		}
-	}
+        if err := ix.DB.UpsertBookPost(ctx, uri, cid, did, createdAt, text, bookID, ratingPtr, progressPtr); err == nil {
+            // optional debug
+            // log.Printf("[indexer] indexed book[%d]: %s", i, uri)
+        }
+    }
+    return nil
 }
 
 
@@ -86,7 +82,7 @@ func (ix *Indexer) PollArticlePosts(ctx context.Context, pageSize int) error {
 	cursor, _ := ix.DB.GetCursor(ctx, "poll:article")
 
 	for {
-		out, err := listRecordsRaw(ctx, ix.Agent, ix.DID, "com.inkreaders.article.post", cursor, int64(pageSize), false)
+		out, err := listRecordsRaw(ctx, ix.Agent, ix.DID, "com.inkreaders.article.post", cursor, int64(pageSize), true)
 		if err != nil {
 			return err
 		}

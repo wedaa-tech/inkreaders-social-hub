@@ -24,7 +24,7 @@ func (s *Store) Close() { s.Pool.Close() }
 
 func (s *Store) UpsertBook(ctx context.Context, title string, authors []string, isbn10, isbn13, link string) (int64, error) {
 	var id int64
-	// prefer isbn13 uniqueness; if empty, dedupe on (title, authors) optionally
+	// prefer isbn13 as a unique key if present
 	if isbn13 != "" {
 		err := s.Pool.QueryRow(ctx, `
 			INSERT INTO books (title, authors, isbn10, isbn13, link)
@@ -39,19 +39,20 @@ func (s *Store) UpsertBook(ctx context.Context, title string, authors []string, 
 		return id, err
 	}
 
+	// no isbn13: try to find by (title,authors) first
 	err := s.Pool.QueryRow(ctx, `
-		INSERT INTO books (title, authors, isbn10, isbn13, link)
-		VALUES ($1,$2,$3,NULL,$4)
-		ON CONFLICT DO NOTHING
-		RETURNING id
-	`, title, authors, isbn10, link).Scan(&id)
+		SELECT id FROM books WHERE title=$1 AND authors=$2 LIMIT 1
+	`, title, authors).Scan(&id)
 	if err == nil {
 		return id, nil
 	}
-	// fallback: try to find by title+authors
+
+	// insert new row
 	err = s.Pool.QueryRow(ctx, `
-		SELECT id FROM books WHERE title=$1 AND authors=$2 LIMIT 1
-	`, title, authors).Scan(&id)
+		INSERT INTO books (title, authors, isbn10, link)
+		VALUES ($1,$2,$3,$4)
+		RETURNING id
+	`, title, authors, isbn10, link).Scan(&id)
 	return id, err
 }
 

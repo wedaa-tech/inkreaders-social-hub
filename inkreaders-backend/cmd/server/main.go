@@ -31,6 +31,7 @@ func main() {
 	// DB
 	ctx := context.Background()
 	dsn := os.Getenv("DB_DSN")
+
 	if dsn == "" {
 		log.Fatal("DB_DSN required")
 	}
@@ -43,6 +44,11 @@ func main() {
 	// Router (note: NewRouter now needs store)
 	r := httph.NewRouter(agent, did, store)
 
+		// after login (both main.go files)
+	log.Printf("Logged in as DID=%s Handle=%s", did, cfg.Handle)
+	// after reading DB_DSN (both)
+	log.Printf("DB_DSN=%s", os.Getenv("DB_DSN"))
+	
 	log.Printf("server listening on :%s", cfg.Port)
 	log.Fatal(http.ListenAndServe(":"+cfg.Port, r))
 }
