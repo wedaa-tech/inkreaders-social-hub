@@ -11,7 +11,7 @@ type Post = {
   uri?: string;
   cid?: string;
   author: { handle: string; name: string };
-  avatar?: string;
+  avatar?: string; // will use author.avatar
   kind: "note" | "book" | "article";
   text?: string;
   book?: { title: string; author: string };
@@ -20,12 +20,87 @@ type Post = {
   likes: number;
   reposts: number;
   replies: number;
+
+  // NEW
+  images?: string[];
+  external?: {
+    uri: string;
+    title?: string;
+    description?: string;
+    thumb?: string;
+  };
 };
+
+function extractImages(embed: any): string[] {
+  if (!embed) return [];
+  // direct images
+  if (
+    embed?.$type === "app.bsky.embed.images#view" &&
+    Array.isArray(embed.images)
+  ) {
+    return embed.images
+      .map((im: any) => im?.thumb || im?.full || "")
+      .filter(Boolean);
+  }
+  // recordWithMedia → unwrap .media
+  if (embed?.$type === "app.bsky.embed.recordWithMedia#view" && embed.media) {
+    return extractImages(embed.media);
+  }
+  return [];
+}
+
+function extractExternal(
+  embed: any
+):
+  | { uri: string; title?: string; description?: string; thumb?: string }
+  | undefined {
+  if (!embed) return undefined;
+  // direct external
+  if (embed?.$type === "app.bsky.embed.external#view" && embed.external?.uri) {
+    const e = embed.external;
+    return {
+      uri: e.uri,
+      title: e.title,
+      description: e.description,
+      thumb: e.thumb,
+    };
+  }
+  // recordWithMedia → unwrap .media
+  if (embed?.$type === "app.bsky.embed.recordWithMedia#view" && embed.media) {
+    return extractExternal(embed.media);
+  }
+  return undefined;
+}
+
+// very simple autolink (URLs only)
+function renderTextWithLinks(text?: string) {
+  if (!text) return null;
+  const parts = text.split(/(\bhttps?:\/\/[^\s]+|\bwww\.[^\s]+)/gi);
+  return parts.map((part, i) => {
+    if (/^https?:\/\//i.test(part) || /^www\./i.test(part)) {
+      const href = /^https?:\/\//i.test(part) ? part : `https://${part}`;
+      return (
+        <a
+          key={i}
+          href={href}
+          target="_blank"
+          rel="noreferrer"
+          className="text-[color:var(--color-brand)] hover:underline break-words"
+        >
+          {part}
+        </a>
+      );
+    }
+    return <span key={i}>{part}</span>;
+  });
+}
 
 function Composer({
   onPost,
 }: {
-  onPost: (p: Omit<Post, "id" | "createdAt" | "likes" | "reposts" | "replies">) => void;
+  onPost: (
+    p: Omit<Post, "id" | "createdAt" | "likes" | "reposts" | "replies">
+  ) => void;
 }) {
   const [text, setText] = useState("");
   const [mode, setMode] = useState<"note" | "book" | "article">("note");
@@ -35,7 +110,10 @@ function Composer({
   const [articleSource, setArticleSource] = useState("");
 
   return (
-    <div id="compose" className="rounded-2xl border border-gray-200 bg-white p-4">
+    <div
+      id="compose"
+      className="rounded-2xl border border-gray-200 bg-white p-4"
+    >
       <div className="flex items-start gap-3">
         <div className="h-10 w-10 shrink-0 rounded-full bg-gray-200" />
         <div className="w-full">
@@ -119,7 +197,10 @@ function Composer({
                       : undefined,
                   article:
                     mode === "article"
-                      ? { title: articleTitle.trim(), source: articleSource.trim() }
+                      ? {
+                          title: articleTitle.trim(),
+                          source: articleSource.trim(),
+                        }
                       : undefined,
                   avatar: undefined,
                 });
@@ -154,30 +235,26 @@ function PostCard({ post }: { post: Post }) {
   const [reposting, setReposting] = useState(false);
   const [replySending, setReplySending] = useState(false);
 
-  // ask backend for latest counts for this specific post
   async function refreshCounts(delayMs = 400) {
     if (!post.uri) return;
-    // slight delay to let the network propagation / indexing settle
     await new Promise((r) => setTimeout(r, delayMs));
     try {
       const r = await fetch(
         `${API_BASE}/api/bsky/post-stats?uri=${encodeURIComponent(post.uri)}&t=${Date.now()}`,
         { cache: "no-store" }
       );
-      if (!r.ok) return; // silent
+      if (!r.ok) return;
       const j = await r.json();
       if (typeof j.likes === "number") setLikeCount(j.likes);
       if (typeof j.reposts === "number") setRepostCount(j.reposts);
       if (typeof j.replies === "number") setReplyCount(j.replies);
-    } catch {
-      // ignore; keep optimistic values
-    }
+    } catch {}
   }
 
   async function like() {
     if (!post.uri || !post.cid || liking) return;
     setLiking(true);
-    setLikeCount((c) => c + 1); // optimistic
+    setLikeCount((c) => c + 1);
     try {
       await fetchJson(`${API_BASE}/api/bsky/like`, {
         method: "POST",
@@ -185,7 +262,7 @@ function PostCard({ post }: { post: Post }) {
         body: JSON.stringify({ uri: post.uri, cid: post.cid }),
       });
       push({ variant: "success", message: "Liked ❤️" });
-      refreshCounts(); // inline refresh
+      refreshCounts();
     } catch (e: any) {
       setLikeCount((c) => Math.max(0, c - 1));
       push({ variant: "error", title: "Like failed", message: e?.message ?? "Try again" });
@@ -240,7 +317,18 @@ function PostCard({ post }: { post: Post }) {
   return (
     <article className="rounded-2xl border border-gray-200 bg-white p-4">
       <div className="flex items-start gap-3">
-        <div className="h-10 w-10 rounded-full bg-gray-200" />
+        {/* Avatar */}
+        {post.avatar ? (
+          <img
+            src={post.avatar}
+            alt=""
+            className="h-10 w-10 rounded-full object-cover"
+            referrerPolicy="no-referrer"
+          />
+        ) : (
+          <div className="h-10 w-10 rounded-full bg-gray-200" />
+        )}
+
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="font-semibold">{post.author.name}</span>
@@ -248,8 +336,14 @@ function PostCard({ post }: { post: Post }) {
             <span className="text-sm text-gray-400">· {new Date(post.createdAt).toLocaleTimeString()}</span>
           </div>
 
-          {post.kind === "note" && <p className="mt-2 whitespace-pre-wrap">{post.text}</p>}
+          {/* Text (autolinked) */}
+          {post.kind === "note" && (
+            <p className="mt-2 whitespace-pre-wrap break-words">
+              {renderTextWithLinks(post.text)}
+            </p>
+          )}
 
+          {/* Book card */}
           {post.kind === "book" && (
             <div className="mt-2 rounded-xl border border-gray-200 bg-gray-50 p-3">
               <div className="text-sm text-gray-500">Book</div>
@@ -259,6 +353,7 @@ function PostCard({ post }: { post: Post }) {
             </div>
           )}
 
+          {/* Article card */}
           {post.kind === "article" && (
             <div className="mt-2 rounded-xl border border-gray-200 bg-gray-50 p-3">
               <div className="text-sm text-gray-500">Article</div>
@@ -267,14 +362,72 @@ function PostCard({ post }: { post: Post }) {
                 <a
                   href={post.article.source}
                   className="break-words text-sm text-[color:var(--color-brand)] hover:underline"
+                  target="_blank"
+                  rel="noreferrer"
                 >
-                  {post.article.source}
+                  {post.article?.source}
                 </a>
               )}
               {post.text && <p className="mt-2">{post.text}</p>}
             </div>
           )}
 
+          {/* Image embeds (1–4) */}
+          {!!post.images?.length && (
+            <div
+              className={
+                "mt-3 grid gap-2 " + (post.images.length === 1 ? "grid-cols-1" : "grid-cols-2")
+              }
+            >
+              {post.images.slice(0, 4).map((src, idx) => (
+                <img
+                  key={src + idx}
+                  src={src}
+                  alt=""
+                  className="h-48 w-full rounded-xl object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              ))}
+            </div>
+          )}
+
+          {/* External link card */}
+          {post.external && (
+            <a
+              href={post.external.uri}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-3 block rounded-xl border border-gray-200 hover:bg-gray-50"
+            >
+              <div className="flex gap-3 p-3">
+                {post.external.thumb ? (
+                  <img
+                    src={post.external.thumb}
+                    alt=""
+                    className="h-16 w-16 rounded-lg object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="h-16 w-16 rounded-lg bg-gray-100" />
+                )}
+                <div className="min-w-0">
+                  <div className="truncate font-medium">
+                    {post.external.title || post.external.uri}
+                  </div>
+                  {post.external.description && (
+                    <div className="mt-0.5 line-clamp-2 text-sm text-gray-600">
+                      {post.external.description}
+                    </div>
+                  )}
+                  <div className="mt-0.5 truncate text-xs text-gray-400">
+                    {post.external.uri}
+                  </div>
+                </div>
+              </div>
+            </a>
+          )}
+
+          {/* Actions */}
           <div className="mt-3 flex gap-6 text-sm text-gray-500">
             <button onClick={() => setReplying((s) => !s)} className="hover:text-gray-700" type="button">
               💬 {replyCount}
@@ -328,6 +481,7 @@ function PostCard({ post }: { post: Post }) {
   );
 }
 
+
 export default function FeedClient() {
   const { push } = useToast();
   const [posts, setPosts] = useState<Post[]>([]);
@@ -335,40 +489,49 @@ export default function FeedClient() {
   const [error, setError] = useState<string | null>(null);
 
   function mapTimelineToPosts(data: any): Post[] {
-    const feed = Array.isArray(data?.feed) ? data.feed : [];
-    
-    return feed.map((item: any): Post => {
-      const record = item?.post?.record ?? {};
-      const author = item?.post?.author ?? {};
-      const text = record?.text ?? "";
-      const createdAt = record?.createdAt ?? item?.post?.indexedAt ?? new Date().toISOString();
-      const uri = item?.post?.uri as string | undefined;
-      const cid = item?.post?.cid as string | undefined;
-      const id = uri && cid ? `${uri}#${cid}` : uri ?? crypto.randomUUID();
+  const feed = Array.isArray(data?.feed) ? data.feed : [];
+  return feed.map((item: any): Post => {
+    const record = item?.post?.record ?? {};
+    const author = item?.post?.author ?? {};
+    const text = record?.text ?? "";
+    const createdAt = record?.createdAt ?? item?.post?.indexedAt ?? new Date().toISOString();
+    const uri = item?.post?.uri as string | undefined;
+    const cid = item?.post?.cid as string | undefined;
+    const id = uri && cid ? `${uri}#${cid}` : uri ?? crypto.randomUUID();
 
-      return {
-        id,
-        uri,
-        cid,
-        author: {
-          handle: author?.handle ? `@${author.handle}` : "@unknown",
-          name: author?.displayName ?? author?.handle ?? "Unknown",
-        },
-        kind: "note",
-        text,
-        createdAt,
-        likes: item?.post?.likeCount ?? 0,
-        reposts: item?.post?.repostCount ?? 0,
-        replies: item?.post?.replyCount ?? 0,
-      };
-    });
-  }
+    const embed = item?.post?.embed;
+    const images = extractImages(embed);
+    const external = extractExternal(embed);
+
+    return {
+      id,
+      uri,
+      cid,
+      author: {
+        handle: author?.handle ? `@${author.handle}` : "@unknown",
+        name: author?.displayName ?? author?.handle ?? "Unknown",
+      },
+      avatar: author?.avatar || undefined,
+      kind: "note",
+      text,
+      createdAt,
+      likes: item?.post?.likeCount ?? 0,
+      reposts: item?.post?.repostCount ?? 0,
+      replies: item?.post?.replyCount ?? 0,
+      images,
+      external,
+    };
+  });
+}
+
 
   async function loadTimeline() {
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch("/api/bsky/timeline?limit=30", { cache: "no-store" });
+      const res = await fetch("/api/bsky/timeline?limit=30", {
+        cache: "no-store",
+      });
       if (!res.ok) throw new Error(`Timeline error ${res.status}`);
       const data = await res.json();
 
@@ -383,12 +546,13 @@ export default function FeedClient() {
     }
   }
 
-
   useEffect(() => {
     loadTimeline();
   }, []);
 
-  async function handlePost(p: Omit<Post, "id" | "createdAt" | "likes" | "reposts" | "replies">) {
+  async function handlePost(
+    p: Omit<Post, "id" | "createdAt" | "likes" | "reposts" | "replies">
+  ) {
     try {
       if (p.kind === "book" && p.book) {
         await fetchJson(`${API_BASE}/api/ink/post-book`, {
@@ -437,14 +601,22 @@ export default function FeedClient() {
       await loadTimeline();
     } catch (e: any) {
       console.error(e);
-      push({ variant: "error", title: "Post failed", message: e?.message ?? "Try again" });
+      push({
+        variant: "error",
+        title: "Post failed",
+        message: e?.message ?? "Try again",
+      });
     }
   }
 
   return (
     <div className="space-y-4">
       <Composer onPost={handlePost} />
-      {loading && <div className="rounded-2xl border border-gray-200 bg-white p-4">Loading…</div>}
+      {loading && (
+        <div className="rounded-2xl border border-gray-200 bg-white p-4">
+          Loading…
+        </div>
+      )}
       {error && (
         <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700">
           {error}
@@ -459,7 +631,10 @@ export default function FeedClient() {
           Nothing here yet — follow more readers or post your first note! ✨
         </div>
       )}
-        {!loading && !error && posts.length > 0 && posts.map((p) => <PostCard key={p.id} post={p} />)}
+      {!loading &&
+        !error &&
+        posts.length > 0 &&
+        posts.map((p) => <PostCard key={p.id} post={p} />)}
     </div>
   );
 }
