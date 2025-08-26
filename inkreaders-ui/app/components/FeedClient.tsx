@@ -234,13 +234,99 @@ function PostCard({ post }: { post: Post }) {
   const [liking, setLiking] = useState(false);
   const [reposting, setReposting] = useState(false);
   const [replySending, setReplySending] = useState(false);
+  const [bookmarked, setBookmarked] = useState(false);
+  const [bookmarking, setBookmarking] = useState(false);
+  const storageKey = post.uri ? `ir:bm:${post.uri}` : `ir:bm:${post.id}`;
+  const [shelfStatus, setShelfStatus] = useState<
+    "none" | "want" | "reading" | "finished"
+  >("none");
+
+  function cycleShelf() {
+    setShelfStatus((prev) => {
+      switch (prev) {
+        case "none":
+          return "want";
+        case "want":
+          return "reading";
+        case "reading":
+          return "finished";
+        default:
+          return "none";
+      }
+    });
+  }
+  const shelfStatusLabel =
+    shelfStatus === "none"
+      ? "Add"
+      : shelfStatus === "want"
+      ? "Want"
+      : shelfStatus === "reading"
+      ? "Reading"
+      : "Finished";
+
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem(storageKey) === "1";
+      console.debug("[bookmark/hydrate]", { storageKey, v });
+      setBookmarked(v);
+    } catch (e) {
+      console.warn("[bookmark/hydrate] failed", e);
+    }
+  }, [storageKey]);
+
+  function persist(v: boolean) {
+    try {
+      v
+        ? localStorage.setItem(storageKey, "1")
+        : localStorage.removeItem(storageKey);
+      console.debug("[bookmark/persist]", { storageKey, v });
+    } catch (e) {
+      console.warn("[bookmark/persist] failed", e);
+    }
+  }
+  async function toggleBookmark() {
+    if (bookmarking) return;
+    setBookmarking(true);
+
+    // optimistic local toggle
+    setBookmarked((prev) => {
+      const next = !prev;
+      console.debug("[bookmark/optimistic]", { prev, next, uri: post.uri });
+      persist(next);
+      return next;
+    });
+
+    try {
+      if (post.uri) {
+        await fetchJson(`/api/bookmarks/toggle`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ postUri: post.uri }),
+        });
+      } else {
+        console.warn("[bookmark] no post.uri; client-only toggle");
+      }
+    } catch (e) {
+      console.error("[bookmark/error] reverting", e);
+      // Revert only for *real* errors (not 404 handled in fetchJson)
+      setBookmarked((prev) => {
+        const next = !prev;
+        persist(next);
+        return next;
+      });
+    } finally {
+      setBookmarking(false);
+    }
+  }
 
   async function refreshCounts(delayMs = 400) {
     if (!post.uri) return;
     await new Promise((r) => setTimeout(r, delayMs));
     try {
       const r = await fetch(
-        `${API_BASE}/api/bsky/post-stats?uri=${encodeURIComponent(post.uri)}&t=${Date.now()}`,
+        `${API_BASE}/api/bsky/post-stats?uri=${encodeURIComponent(
+          post.uri
+        )}&t=${Date.now()}`,
         { cache: "no-store" }
       );
       if (!r.ok) return;
@@ -265,7 +351,11 @@ function PostCard({ post }: { post: Post }) {
       refreshCounts();
     } catch (e: any) {
       setLikeCount((c) => Math.max(0, c - 1));
-      push({ variant: "error", title: "Like failed", message: e?.message ?? "Try again" });
+      push({
+        variant: "error",
+        title: "Like failed",
+        message: e?.message ?? "Try again",
+      });
     } finally {
       setLiking(false);
     }
@@ -285,7 +375,11 @@ function PostCard({ post }: { post: Post }) {
       refreshCounts();
     } catch (e: any) {
       setRepostCount((c) => Math.max(0, c - 1));
-      push({ variant: "error", title: "Repost failed", message: e?.message ?? "Try again" });
+      push({
+        variant: "error",
+        title: "Repost failed",
+        message: e?.message ?? "Try again",
+      });
     } finally {
       setReposting(false);
     }
@@ -302,13 +396,21 @@ function PostCard({ post }: { post: Post }) {
       await fetchJson(`${API_BASE}/api/bsky/reply`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ parentUri: post.uri, parentCid: post.cid, text: t }),
+        body: JSON.stringify({
+          parentUri: post.uri,
+          parentCid: post.cid,
+          text: t,
+        }),
       });
       push({ variant: "success", message: "Replied 💬" });
       refreshCounts();
     } catch (e: any) {
       setReplyCount((c) => Math.max(0, c - 1));
-      push({ variant: "error", title: "Reply failed", message: e?.message ?? "Try again" });
+      push({
+        variant: "error",
+        title: "Reply failed",
+        message: e?.message ?? "Try again",
+      });
     } finally {
       setReplySending(false);
     }
@@ -332,8 +434,12 @@ function PostCard({ post }: { post: Post }) {
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="font-semibold">{post.author.name}</span>
-            <span className="truncate text-sm text-gray-500">{post.author.handle}</span>
-            <span className="text-sm text-gray-400">· {new Date(post.createdAt).toLocaleTimeString()}</span>
+            <span className="truncate text-sm text-gray-500">
+              {post.author.handle}
+            </span>
+            <span className="text-sm text-gray-400">
+              · {new Date(post.createdAt).toLocaleTimeString()}
+            </span>
           </div>
 
           {/* Text (autolinked) */}
@@ -348,7 +454,11 @@ function PostCard({ post }: { post: Post }) {
             <div className="mt-2 rounded-xl border border-gray-200 bg-gray-50 p-3">
               <div className="text-sm text-gray-500">Book</div>
               <div className="text-lg font-semibold">{post.book?.title}</div>
-              {post.book?.author && <div className="text-sm text-gray-600">by {post.book.author}</div>}
+              {post.book?.author && (
+                <div className="text-sm text-gray-600">
+                  by {post.book.author}
+                </div>
+              )}
               {post.text && <p className="mt-2">{post.text}</p>}
             </div>
           )}
@@ -376,7 +486,8 @@ function PostCard({ post }: { post: Post }) {
           {!!post.images?.length && (
             <div
               className={
-                "mt-3 grid gap-2 " + (post.images.length === 1 ? "grid-cols-1" : "grid-cols-2")
+                "mt-3 grid gap-2 " +
+                (post.images.length === 1 ? "grid-cols-1" : "grid-cols-2")
               }
             >
               {post.images.slice(0, 4).map((src, idx) => (
@@ -384,7 +495,7 @@ function PostCard({ post }: { post: Post }) {
                   key={src + idx}
                   src={src}
                   alt=""
-                  className="h-48 w-full rounded-xl object-cover"
+                  className="w-full rounded-2xl object-cover shadow-md hover:shadow-xl hover:scale-[1.02] transition-all duration-300"
                   referrerPolicy="no-referrer"
                 />
               ))}
@@ -428,28 +539,70 @@ function PostCard({ post }: { post: Post }) {
           )}
 
           {/* Actions */}
-          <div className="mt-3 flex gap-6 text-sm text-gray-500">
-            <button onClick={() => setReplying((s) => !s)} className="hover:text-gray-700" type="button">
-              💬 {replyCount}
-            </button>
+          <div className="mt-3 flex flex-wrap items-center gap-4 text-sm text-gray-500">
             <button
+              type="button"
+              onClick={() => setReplying((s) => !s)}
+              title="Reply"
+              aria-label="Reply"
+              className="inline-flex items-center gap-1 rounded-full px-2 py-1 transition hover:bg-gray-100 hover:text-gray-700 active:scale-95 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-brand)]"
+            >
+              <span aria-hidden>💬</span>
+              <span className="tabular-nums">{replyCount}</span>
+            </button>
+
+            <button
+              type="button"
               onClick={repost}
-              className={"hover:text-gray-700 " + (!post.uri ? "cursor-not-allowed opacity-40" : "")}
-              type="button"
               disabled={!post.uri || reposting}
-              title={!post.uri ? "No URI" : reposting ? "Reposting..." : "Repost"}
+              title={!post.uri ? "No URI" : reposting ? "Reposting…" : "Repost"}
+              aria-label="Repost"
+              className="inline-flex items-center gap-1 rounded-full px-2 py-1 transition hover:bg-gray-100 hover:text-gray-700 active:scale-95
+               cursor-pointer disabled:cursor-not-allowed disabled:opacity-40
+               focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-brand)]"
             >
-              🔁 {repostCount}
+              <span aria-hidden>🔁</span>
+              <span className="tabular-nums">{repostCount}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={like}
+              disabled={!post.uri || liking}
+              title={!post.uri ? "No URI" : liking ? "Liking…" : "Like"}
+              aria-label="Like"
+              className="inline-flex items-center gap-1 rounded-full px-2 py-1 transition hover:bg-gray-100 hover:text-gray-700 active:scale-95
+               cursor-pointer disabled:cursor-not-allowed disabled:opacity-40
+               focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-brand)]"
+            >
+              <span aria-hidden>❤️</span>
+              <span className="tabular-nums">{likeCount}</span>
             </button>
             <button
-              onClick={like}
-              className={"hover:text-gray-700 " + (!post.uri ? "cursor-not-allowed opacity-40" : "")}
               type="button"
-              disabled={!post.uri || liking}
-              title={!post.uri ? "No URI" : liking ? "Liking..." : "Like"}
+              onClick={toggleBookmark}
+              aria-pressed={bookmarked}
+              disabled={bookmarking}
+              title={bookmarked ? "Remove bookmark" : "Bookmark"}
+              className="inline-flex items-center gap-1 rounded-full px-2 py-1 transition hover:bg-gray-100 hover:text-gray-700 active:scale-95
+             cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-brand)]"
             >
-              ❤️ {likeCount}
+              <span aria-hidden>{bookmarked ? "⭐" : "☆"}</span>
+              <span className="sr-only">
+                {bookmarked ? "Remove bookmark" : "Bookmark"}
+              </span>
             </button>
+            <div className="relative">
+              {/* Replace with your popover of choice; inline MVP: cycle through statuses */}
+              <button
+                type="button"
+                onClick={cycleShelf} // rotates: none → want → reading → finished → none
+                className="inline-flex items-center gap-1 rounded-full px-2 py-1 transition hover:bg-gray-100 active:scale-95 cursor-pointer"
+                title="Add to shelf"
+              >
+                📚 <span>{shelfStatusLabel}</span>
+              </button>
+            </div>
           </div>
 
           {replying && (
@@ -462,7 +615,10 @@ function PostCard({ post }: { post: Post }) {
                 className="w-full rounded-xl border border-gray-300 p-2 focus:outline-none focus:ring-2 focus:ring-[color:var(--color-brand)]"
               />
               <div className="mt-1 flex justify-end gap-2">
-                <button onClick={() => setReplying(false)} className="rounded-lg px-3 py-1 text-sm">
+                <button
+                  onClick={() => setReplying(false)}
+                  className="rounded-lg px-3 py-1 text-sm"
+                >
                   Cancel
                 </button>
                 <button
@@ -481,7 +637,6 @@ function PostCard({ post }: { post: Post }) {
   );
 }
 
-
 export default function FeedClient() {
   const { push } = useToast();
   const [posts, setPosts] = useState<Post[]>([]);
@@ -489,41 +644,41 @@ export default function FeedClient() {
   const [error, setError] = useState<string | null>(null);
 
   function mapTimelineToPosts(data: any): Post[] {
-  const feed = Array.isArray(data?.feed) ? data.feed : [];
-  return feed.map((item: any): Post => {
-    const record = item?.post?.record ?? {};
-    const author = item?.post?.author ?? {};
-    const text = record?.text ?? "";
-    const createdAt = record?.createdAt ?? item?.post?.indexedAt ?? new Date().toISOString();
-    const uri = item?.post?.uri as string | undefined;
-    const cid = item?.post?.cid as string | undefined;
-    const id = uri && cid ? `${uri}#${cid}` : uri ?? crypto.randomUUID();
+    const feed = Array.isArray(data?.feed) ? data.feed : [];
+    return feed.map((item: any): Post => {
+      const record = item?.post?.record ?? {};
+      const author = item?.post?.author ?? {};
+      const text = record?.text ?? "";
+      const createdAt =
+        record?.createdAt ?? item?.post?.indexedAt ?? new Date().toISOString();
+      const uri = item?.post?.uri as string | undefined;
+      const cid = item?.post?.cid as string | undefined;
+      const id = uri && cid ? `${uri}#${cid}` : uri ?? crypto.randomUUID();
 
-    const embed = item?.post?.embed;
-    const images = extractImages(embed);
-    const external = extractExternal(embed);
+      const embed = item?.post?.embed;
+      const images = extractImages(embed);
+      const external = extractExternal(embed);
 
-    return {
-      id,
-      uri,
-      cid,
-      author: {
-        handle: author?.handle ? `@${author.handle}` : "@unknown",
-        name: author?.displayName ?? author?.handle ?? "Unknown",
-      },
-      avatar: author?.avatar || undefined,
-      kind: "note",
-      text,
-      createdAt,
-      likes: item?.post?.likeCount ?? 0,
-      reposts: item?.post?.repostCount ?? 0,
-      replies: item?.post?.replyCount ?? 0,
-      images,
-      external,
-    };
-  });
-}
-
+      return {
+        id,
+        uri,
+        cid,
+        author: {
+          handle: author?.handle ? `@${author.handle}` : "@unknown",
+          name: author?.displayName ?? author?.handle ?? "Unknown",
+        },
+        avatar: author?.avatar || undefined,
+        kind: "note",
+        text,
+        createdAt,
+        likes: item?.post?.likeCount ?? 0,
+        reposts: item?.post?.repostCount ?? 0,
+        replies: item?.post?.replyCount ?? 0,
+        images,
+        external,
+      };
+    });
+  }
 
   async function loadTimeline() {
     try {
@@ -642,12 +797,28 @@ export default function FeedClient() {
 // Shared fetch helper with decent error reporting
 async function fetchJson(url: string, init?: RequestInit) {
   const res = await fetch(url, init);
+  const text = await res.text().catch(() => "");
+  // Log everything for now
+  console.debug("[fetchJson]", {
+    url,
+    method: init?.method ?? "GET",
+    status: res.status,
+    ok: res.ok,
+    bodyPreview: text.slice(0, 200),
+  });
+
+  // Allow bookmarks toggle to be "client-only" if route doesn't exist yet
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
+    // If this is the bookmarks toggle and it's a 404, don't throw—let caller proceed
+    if (url.includes("/api/bookmarks/toggle") && res.status === 404) {
+      console.warn("[bookmarks] 404 route missing; proceeding client-only.");
+      return {}; // pretend success
+    }
     throw new Error(`${res.status} ${res.statusText} — ${text}`);
   }
+
   try {
-    return await res.json();
+    return text ? JSON.parse(text) : {};
   } catch {
     return {};
   }

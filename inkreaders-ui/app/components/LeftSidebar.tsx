@@ -1,11 +1,26 @@
 // app/components/LeftSidebar.tsx
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+
+const NAV = [
+  { label: "Home", icon: "🏠", href: "/" },
+  { label: "Discover", icon: "🔎", href: "/discover" },
+  { label: "Lists", icon: "📚", href: "/lists" },
+  { label: "Notifications", icon: "🔔", href: "/notifications" }, // stub
+  { label: "Profile", icon: "👤", href: "/me" }, // stub
+  { label: "Settings", icon: "⚙️", href: "/settings" }, // stub
+];
+
 export default function LeftSidebar() {
+  const pathname = usePathname();
   return (
     <nav className="space-y-4">
       {/* Brand */}
       <div className="rounded-2xl border border-gray-200 bg-white p-4">
         <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-xl bg-[color:var(--color-brand)]"></div>
+          <div className="h-10 w-10 rounded-xl bg-[color:var(--color-brand)]" />
           <div>
             <h1 className="text-xl font-bold">InkReaders</h1>
             <p className="text-sm text-gray-500">read • share • connect</p>
@@ -16,24 +31,23 @@ export default function LeftSidebar() {
       {/* Primary nav */}
       <div className="rounded-2xl border border-gray-200 bg-white p-2">
         <ul className="space-y-1">
-          {[
-            ["Home", "🏠"],
-            ["Discover", "🔎"],
-            ["Lists", "📚"],
-            ["Notifications", "🔔"],
-            ["Profile", "👤"],
-            ["Settings", "⚙️"],
-          ].map(([label, icon]) => (
-            <li key={label}>
-              <a
-                href="#"
-                className="flex items-center gap-3 rounded-xl px-3 py-2 hover:bg-gray-50"
-              >
-                <span className="text-lg">{icon}</span>
-                <span className="font-medium">{label}</span>
-              </a>
-            </li>
-          ))}
+          {NAV.map(({ label, icon, href }) => {
+            const active = pathname === href || (href !== "/" && pathname.startsWith(href));
+            return (
+              <li key={label}>
+                <Link
+                  href={href}
+                  className={
+                    "flex items-center gap-3 rounded-xl px-3 py-2 hover:bg-gray-50 " +
+                    (active ? "bg-gray-50 font-semibold" : "")
+                  }
+                >
+                  <span className="text-lg">{icon}</span>
+                  <span>{label}</span>
+                </Link>
+              </li>
+            );
+          })}
         </ul>
 
         <div className="p-2">
@@ -46,10 +60,10 @@ export default function LeftSidebar() {
         </div>
       </div>
 
-      {/* Profile mini-card */}
+      {/* Profile mini-card (stub) */}
       <div className="rounded-2xl border border-gray-200 bg-white p-4">
         <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-full bg-gray-200"></div>
+          <div className="h-10 w-10 rounded-full bg-gray-200" />
           <div className="min-w-0">
             <p className="truncate font-semibold">You</p>
             <p className="truncate text-sm text-gray-500">@reader.example</p>
