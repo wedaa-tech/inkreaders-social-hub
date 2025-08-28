@@ -1,3 +1,4 @@
+// app/components/Shell.tsx
 "use client";
 
 import { ReactNode } from "react";
@@ -13,19 +14,30 @@ export default function Shell({
   return (
     <div className="mx-auto max-w-7xl px-3 sm:px-4">
       {/* 1 col on mobile, 2 cols >=lg, 3 cols >=xl */}
-      <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[260px_minmax(0,1fr)_320px]">
+      <div
+        className="
+          grid gap-0
+          lg:grid-cols-[260px_minmax(0,1fr)]
+          xl:grid-cols-[260px_minmax(0,1fr)_320px]
+          border-x border-gray-200 bg-gray-50
+        "
+      >
         {/* Left */}
-        <aside className="hidden lg:block lg:sticky lg:top-4 lg:self-start">
-          <LeftSidebar />
+        <aside className="hidden lg:block border-r border-gray-200">
+          <div className="sticky top-4 self-start">
+            <LeftSidebar />
+          </div>
         </aside>
 
         {/* Center */}
-        <main className="min-w-0 space-y-4">{children}</main>
+        <main className="min-w-0 space-y-4 border-r border-gray-200">
+          {children}
+        </main>
 
         {/* Right */}
         {right ? (
-          <aside className="hidden xl:block xl:sticky xl:top-4 xl:self-start">
-            {right}
+          <aside className="hidden xl:block">
+            <div className="sticky top-4 self-start">{right}</div>
           </aside>
         ) : null}
       </div>
