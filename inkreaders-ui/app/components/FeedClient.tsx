@@ -11,7 +11,7 @@ type Post = {
   uri?: string;
   cid?: string;
   author: { handle: string; name: string };
-  avatar?: string; // will use author.avatar
+  avatar?: string;
   kind: "note" | "book" | "article";
   text?: string;
   book?: { title: string; author: string };
@@ -20,8 +20,6 @@ type Post = {
   likes: number;
   reposts: number;
   replies: number;
-
-  // NEW
   images?: string[];
   external?: {
     uri: string;
@@ -33,9 +31,9 @@ type Post = {
 
 type FeedSource = "app" | "user";
 
+/* ---------- helpers for embeds ---------- */
 function extractImages(embed: any): string[] {
   if (!embed) return [];
-  // direct images
   if (
     embed?.$type === "app.bsky.embed.images#view" &&
     Array.isArray(embed.images)
@@ -44,7 +42,6 @@ function extractImages(embed: any): string[] {
       .map((im: any) => im?.thumb || im?.full || "")
       .filter(Boolean);
   }
-  // recordWithMedia → unwrap .media
   if (embed?.$type === "app.bsky.embed.recordWithMedia#view" && embed.media) {
     return extractImages(embed.media);
   }
@@ -57,7 +54,6 @@ function extractExternal(
   | { uri: string; title?: string; description?: string; thumb?: string }
   | undefined {
   if (!embed) return undefined;
-  // direct external
   if (embed?.$type === "app.bsky.embed.external#view" && embed.external?.uri) {
     const e = embed.external;
     return {
@@ -67,7 +63,6 @@ function extractExternal(
       thumb: e.thumb,
     };
   }
-  // recordWithMedia → unwrap .media
   if (embed?.$type === "app.bsky.embed.recordWithMedia#view" && embed.media) {
     return extractExternal(embed.media);
   }
@@ -97,6 +92,7 @@ function renderTextWithLinks(text?: string) {
   });
 }
 
+/* ---------- Composer ---------- */
 function Composer({
   onPost,
 }: {
@@ -225,6 +221,7 @@ function Composer({
   );
 }
 
+/* ---------- Post card ---------- */
 function PostCard({ post }: { post: Post }) {
   const { push } = useToast();
   const [likeCount, setLikeCount] = useState(post.likes);
@@ -239,6 +236,7 @@ function PostCard({ post }: { post: Post }) {
   const [bookmarked, setBookmarked] = useState(false);
   const [bookmarking, setBookmarking] = useState(false);
   const storageKey = post.uri ? `ir:bm:${post.uri}` : `ir:bm:${post.id}`;
+
   const [shelfStatus, setShelfStatus] = useState<
     "none" | "want" | "reading" | "finished"
   >("none");
@@ -286,6 +284,7 @@ function PostCard({ post }: { post: Post }) {
       console.warn("[bookmark/persist] failed", e);
     }
   }
+
   async function toggleBookmark() {
     if (bookmarking) return;
     setBookmarking(true);
@@ -300,17 +299,17 @@ function PostCard({ post }: { post: Post }) {
 
     try {
       if (post.uri) {
-        await fetchJson(`/api/bookmarks/toggle`, {
+        await fetchJson(`${API_BASE}/api/bookmarks/toggle`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ postUri: post.uri }),
+          credentials: "include",
         });
       } else {
         console.warn("[bookmark] no post.uri; client-only toggle");
       }
     } catch (e) {
       console.error("[bookmark/error] reverting", e);
-      // Revert only for *real* errors (not 404 handled in fetchJson)
       setBookmarked((prev) => {
         const next = !prev;
         persist(next);
@@ -348,6 +347,7 @@ function PostCard({ post }: { post: Post }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ uri: post.uri, cid: post.cid }),
+        credentials: "include",
       });
       push({ variant: "success", message: "Liked ❤️" });
       refreshCounts();
@@ -372,6 +372,7 @@ function PostCard({ post }: { post: Post }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ uri: post.uri, cid: post.cid }),
+        credentials: "include",
       });
       push({ variant: "success", message: "Reposted 🔁" });
       refreshCounts();
@@ -403,6 +404,7 @@ function PostCard({ post }: { post: Post }) {
           parentCid: post.cid,
           text: t,
         }),
+        credentials: "include",
       });
       push({ variant: "success", message: "Replied 💬" });
       refreshCounts();
@@ -580,6 +582,7 @@ function PostCard({ post }: { post: Post }) {
               <span aria-hidden>❤️</span>
               <span className="tabular-nums">{likeCount}</span>
             </button>
+
             <button
               type="button"
               onClick={toggleBookmark}
@@ -594,11 +597,11 @@ function PostCard({ post }: { post: Post }) {
                 {bookmarked ? "Remove bookmark" : "Bookmark"}
               </span>
             </button>
+
             <div className="relative">
-              {/* Replace with your popover of choice; inline MVP: cycle through statuses */}
               <button
                 type="button"
-                onClick={cycleShelf} // rotates: none → want → reading → finished → none
+                onClick={cycleShelf}
                 className="inline-flex items-center gap-1 rounded-full px-2 py-1 transition hover:bg-gray-100 active:scale-95 cursor-pointer"
                 title="Add to shelf"
               >
@@ -639,13 +642,17 @@ function PostCard({ post }: { post: Post }) {
   );
 }
 
+/* ---------- Feed root ---------- */
 export default function FeedClient() {
+  console.debug("[FeedClient] mount");
   const { push } = useToast();
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [feedSource, setFeedSource] = useState<"app" | "user">("app");
+
+  const [feedSource, setFeedSource] = useState<FeedSource>("app");
   const [bsConnected, setBsConnected] = useState<boolean>(false);
+  const [effectiveSource, setEffectiveSource] = useState<FeedSource>("app"); // who actually served
 
   function mapTimelineToPosts(data: any): Post[] {
     const feed = Array.isArray(data?.feed) ? data.feed : [];
@@ -685,32 +692,66 @@ export default function FeedClient() {
   }
 
   async function loadTimeline() {
-    try {
-      setLoading(true);
-      setError(null);
+  try {
+    console.debug("Start loading timeline");
+    setLoading(true);
+    setError(null);
 
-      const qs = new URLSearchParams({
-        limit: "30",
-        source: feedSource, // "app" or "user"
-      });
+    const res = await fetch(
+      `${API_BASE}/api/bsky/timeline?limit=30&source=${feedSource}`,
+      { cache: "no-store", credentials: "include" }
+    );
+    console.debug("[timeline/resp]", res.status);
 
-      const res = await fetch(`/api/bsky/timeline?${qs.toString()}`, {
-        cache: "no-store",
-        credentials: "include", // ensure ink_sid (Bluesky session) is sent
-      });
-      if (!res.ok) throw new Error(`Timeline error ${res.status}`);
-
-      const data = await res.json();
-      const mapped = mapTimelineToPosts(data);
-      const uniq = Array.from(new Map(mapped.map((p) => [p.id, p])).values());
-      setPosts(uniq);
-    } catch (e: any) {
-      setError(e?.message ?? "Failed to load timeline");
-    } finally {
+    // NEW: keep the 'user' tab selected; show banner; empty feed
+    if (res.status === 401 && feedSource === "user") {
+      setPosts([]);                    // show empty feed under the banner
+      setError(null);                  // avoid red error box
+      setEffectiveSource("user");      // “Showing: Following (You)”
       setLoading(false);
+      return;                          // stop here
     }
-  }
 
+    const servedBy = res.headers.get("X-IR-Source") as FeedSource | null;
+    console.debug("[timeline/header]", servedBy);
+    if (servedBy === "app" || servedBy === "user") {
+      setEffectiveSource(servedBy);
+    }
+
+    if (!res.ok) throw new Error(`Timeline error ${res.status}`);
+
+    const data = await res.json();
+    const mapped = mapTimelineToPosts(data);
+    const uniq = Array.from(new Map(mapped.map((p) => [p.id, p])).values());
+    setPosts(uniq);
+  } catch (e: any) {
+    setError(e?.message ?? "Failed to load timeline");
+  } finally {
+    setLoading(false);
+  }
+}
+
+
+  // Check Bluesky connection in the browser
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/auth/me`, {
+          credentials: "include",
+        });
+        if (!alive) return;
+        setBsConnected(res.ok);
+      } catch {
+        if (alive) setBsConnected(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Load when feedSource changes
   useEffect(() => {
     loadTimeline();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -731,6 +772,7 @@ export default function FeedClient() {
               authors: p.book.author ? [p.book.author] : [],
             },
           }),
+          credentials: "include",
         });
         push({ variant: "success", message: "Book posted 📚" });
         await loadTimeline();
@@ -749,6 +791,7 @@ export default function FeedClient() {
               source: "",
             },
           }),
+          credentials: "include",
         });
         push({ variant: "success", message: "Article posted 📰" });
         await loadTimeline();
@@ -757,10 +800,11 @@ export default function FeedClient() {
 
       const payloadText = p.text ?? "";
       if (!payloadText.trim()) return;
-      const res = await fetch(`/api/bsky/post`, {
+      const res = await fetch(`${API_BASE}/api/bsky/post`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: payloadText }),
+        credentials: "include",
       });
       if (!res.ok) throw new Error(`post ${res.status}`);
       push({ variant: "success", message: "Posted ✅" });
@@ -778,6 +822,7 @@ export default function FeedClient() {
   return (
     <div className="space-y-4">
       <Composer onPost={handlePost} />
+
       {/* Feed tabs */}
       <div className="rounded-2xl border border-gray-200 bg-white p-2">
         <div className="flex items-center gap-2">
@@ -793,6 +838,7 @@ export default function FeedClient() {
           >
             For You
           </button>
+
           <button
             type="button"
             onClick={() => setFeedSource("user")}
@@ -802,23 +848,27 @@ export default function FeedClient() {
                 ? "bg-[color:var(--color-brand)] text-white"
                 : "bg-gray-100 text-gray-700 hover:bg-gray-200")
             }
-            disabled={!bsConnected}
             title={bsConnected ? "Your following" : "Connect Bluesky to enable"}
           >
             Following (You)
           </button>
 
-          {/* Spacer + optional connection hint */}
-          {!bsConnected && feedSource === "user" && (
-            <div className="ml-auto text-sm text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg">
-              Connect Bluesky to see your following feed.{" "}
-              <a href="/settings" className="underline">
-                Connect now
-              </a>
-            </div>
-          )}
+          <div className="ml-auto text-xs text-gray-500 px-2">
+            Showing:{" "}
+            <span className="font-medium">
+              {effectiveSource === "user" ? "Following (You)" : "For You"}
+            </span>
+          </div>
         </div>
       </div>
+      {!bsConnected && feedSource === "user" && (
+        <div className="ml-auto text-sm text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg">
+          Connect Bluesky to see your following feed.{" "}
+          <a className="underline" href="/settings">
+            Connect now
+          </a>
+        </div>
+      )}
 
       {loading && (
         <div className="rounded-2xl border border-gray-200 bg-white p-4">
@@ -847,11 +897,10 @@ export default function FeedClient() {
   );
 }
 
-// Shared fetch helper with decent error reporting
+/* ---------- shared fetch helper ---------- */
 async function fetchJson(url: string, init?: RequestInit) {
   const res = await fetch(url, init);
   const text = await res.text().catch(() => "");
-  // Log everything for now
   console.debug("[fetchJson]", {
     url,
     method: init?.method ?? "GET",
@@ -859,17 +908,14 @@ async function fetchJson(url: string, init?: RequestInit) {
     ok: res.ok,
     bodyPreview: text.slice(0, 200),
   });
-
-  // Allow bookmarks toggle to be "client-only" if route doesn't exist yet
   if (!res.ok) {
-    // If this is the bookmarks toggle and it's a 404, don't throw—let caller proceed
+    // Special-case: allow client-only bookmarks if route isn't wired yet
     if (url.includes("/api/bookmarks/toggle") && res.status === 404) {
       console.warn("[bookmarks] 404 route missing; proceeding client-only.");
-      return {}; // pretend success
+      return {};
     }
     throw new Error(`${res.status} ${res.statusText} — ${text}`);
   }
-
   try {
     return text ? JSON.parse(text) : {};
   } catch {

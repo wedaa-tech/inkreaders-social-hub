@@ -1,3 +1,4 @@
+// internal/http/auth.go
 package http
 
 import (
@@ -5,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -33,8 +35,8 @@ func NewAuth(store *db.Store, box *crypto.SecretBox, pds string) *Auth {
 }
 
 type loginReq struct {
-	Identifier  string `json:"identifier"`   // @handle or email
-	AppPassword string `json:"appPassword"`  // app password only
+	Identifier  string `json:"identifier"`  // handle or email (no @ needed)
+	AppPassword string `json:"appPassword"` // app password only
 	PDSBase     string `json:"pdsBase,omitempty"`
 }
 
@@ -57,6 +59,30 @@ func parseActiveUntil(s string) time.Time {
 	return t
 }
 
+// --- cookie helpers (dev-friendly on localhost) ---
+
+func isLocalhostHost(host string) bool {
+	h := strings.Split(host, ":")[0] // strip :port
+	return h == "localhost" || h == "127.0.0.1" || h == "::1"
+}
+
+func wantSecureCookie(r *http.Request) bool {
+	// explicit override via env (COOKIE_SECURE=false to disable in dev)
+	if v := os.Getenv("COOKIE_SECURE"); v != "" {
+		return strings.ToLower(v) != "false"
+	}
+	// https request => secure
+	if r.TLS != nil {
+		return true
+	}
+	// localhost in dev => not secure
+	if isLocalhostHost(r.Host) {
+		return false
+	}
+	// default secure elsewhere
+	return true
+}
+
 func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 	var in loginReq
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
@@ -68,7 +94,7 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 		pds = a.PDSBase
 	}
 
-	// call com.atproto.server.createSession
+	// com.atproto.server.createSession
 	payload, _ := json.Marshal(map[string]string{
 		"identifier": in.Identifier,
 		"password":   in.AppPassword,
@@ -112,24 +138,23 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 
 	sid := uuid.New().String()
 	if _, err := a.Store.Pool.Exec(r.Context(), `insert into sessions (id, account_id) values ($1,$2)`, sid, accountID); err != nil {
-    http.Error(w, "db error: "+err.Error(), http.StatusInternalServerError)
-    return
+		http.Error(w, "db error: "+err.Error(), http.StatusInternalServerError)
+		return
 	}
 
+	// issue cookie (dev-safe on localhost)
 	c := &http.Cookie{
 		Name:     "ink_sid",
 		Value:    sid,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   true,
+		Secure:   wantSecureCookie(r),
 		SameSite: http.SameSiteLaxMode,
 		Expires:  time.Now().Add(30 * 24 * time.Hour),
 	}
 	if d := os.Getenv("COOKIE_DOMAIN"); d != "" {
 		c.Domain = d
 	}
-	c.Secure = os.Getenv("COOKIE_DOMAIN") != ""
-	
 	http.SetCookie(w, c)
 
 	w.Header().Set("Content-Type", "application/json")
@@ -139,12 +164,26 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *Auth) Logout(w http.ResponseWriter, r *http.Request) {
+	// delete from DB if present
 	if sid, err := r.Cookie("ink_sid"); err == nil {
-		_, _ = a.Store.Pool.Exec(r.Context(),
-			`delete from sessions where id=$1`, sid.Value)
-		sid.MaxAge = -1
-		http.SetCookie(w, sid)
+		_, _ = a.Store.Pool.Exec(r.Context(), `delete from sessions where id=$1`, sid.Value)
 	}
+
+	// overwrite cookie with expired one (same attrs)
+	c := &http.Cookie{
+		Name:     "ink_sid",
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   wantSecureCookie(r),
+		SameSite: http.SameSiteLaxMode,
+		Expires:  time.Unix(0, 0),
+		MaxAge:   -1,
+	}
+	if d := os.Getenv("COOKIE_DOMAIN"); d != "" {
+		c.Domain = d
+	}
+	http.SetCookie(w, c)
 	w.WriteHeader(http.StatusNoContent)
 }
 

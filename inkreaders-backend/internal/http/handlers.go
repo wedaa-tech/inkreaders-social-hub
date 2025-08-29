@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"time"
+	"strings"
 
 	"github.com/bluesky-social/indigo/xrpc"
 
@@ -445,16 +446,35 @@ func (h *Handlers) PostStats(w http.ResponseWriter, r *http.Request) {
 // - auto (default): if session exists -> user, else -> app
 // - app: always use InkReaders app account agent
 // - user: require ink_sid (401 if missing)
+// internal/http/handlers.go
+// GET /api/bsky/timeline?limit=30&cursor=...&source=auto|app|user
+// internal/http/handlers.go
+// add at top if not present:
+// import (
+//   "io"
+//   "strings"
+//   // ... existing imports
+// )
+
 func (h *Handlers) Timeline(w http.ResponseWriter, r *http.Request, s *SessionData) {
 	ctx := r.Context()
 	q := r.URL.Query()
-	limit := q.Get("limit")
-	if limit == "" { limit = "30" }
-	cursor := q.Get("cursor")
-	source := q.Get("source") // "", "auto", "app", "user"
-	if source == "" { source = "auto" }
 
-	// Decide which identity to use
+	limit := q.Get("limit")
+	if limit == "" {
+		limit = "30"
+	}
+	cursor := q.Get("cursor")
+
+	// normalize source
+	source := strings.ToLower(strings.TrimSpace(q.Get("source")))
+	if source == "" {
+		source = "auto"
+	}
+
+	fmt.Printf("[timeline] source=%q sNil=%v limit=%s cursor=%q\n", source, (s == nil), limit, cursor)
+
+	// Decide identity
 	useUser := false
 	switch source {
 	case "user":
@@ -469,40 +489,68 @@ func (h *Handlers) Timeline(w http.ResponseWriter, r *http.Request, s *SessionDa
 		useUser = (s != nil)
 	}
 
-	params := map[string]any{
-		"limit": limit,
-	}
-	if cursor != "" {
-		params["cursor"] = cursor
-	}
-
-	// Call app.bsky.feed.getTimeline
 	if useUser {
-		// user session: GET with Bearer to user's PDS
-		// Build URL: /xrpc/app.bsky.feed.getTimeline?limit=..&cursor=..
+		// ---- USER branch (per-user PDS + Bearer) ----
 		u := s.PDSBase + "/xrpc/app.bsky.feed.getTimeline?limit=" + limit
-		if cursor != "" { u += "&cursor=" + cursor }
+		if cursor != "" {
+			u += "&cursor=" + cursor
+		}
+
 		req, _ := http.NewRequestWithContext(ctx, "GET", u, nil)
 		req.Header.Set("Authorization", "Bearer "+s.AccessJWT)
+
 		resp, err := http.DefaultClient.Do(req)
-		if err != nil { http.Error(w, err.Error(), 502); return }
-		defer resp.Body.Close()
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			b, _ := io.ReadAll(resp.Body)
-			http.Error(w, string(b), 502)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
 			return
 		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			b, _ := io.ReadAll(resp.Body)
+			http.Error(w, string(b), http.StatusBadGateway)
+			return
+		}
+
+		w.Header().Set("X-IR-Source", "user")
+		w.Header().Set("X-IR-Handle", s.Handle)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.Copy(w, resp.Body)
 		return
 	}
 
-	// app account via indigo client
+	// ---- APP branch (InkReaders app agent) ----
+	params := map[string]any{"limit": limit}
+	if cursor != "" {
+		params["cursor"] = cursor
+	}
+
 	var out map[string]any
 	if err := h.agent.Do(ctx, xrpc.Query, "", "app.bsky.feed.getTimeline", params, nil, &out); err != nil {
-		http.Error(w, err.Error(), 500)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	w.Header().Set("X-IR-Source", "app")
+	w.Header().Set("X-IR-Handle", h.did) // or app handle if you have it
+	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(out)
 }
+
+
+// internal/http/handlers.go
+func (h *Handlers) Who(w http.ResponseWriter, r *http.Request, s *SessionData) {
+	resp := map[string]any{
+		"hasSession": s != nil,
+	}
+	if s != nil {
+		resp["did"] = s.DID
+		resp["handle"] = s.Handle
+		resp["pds"] = s.PDSBase
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+
 
