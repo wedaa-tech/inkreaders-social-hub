@@ -692,45 +692,60 @@ export default function FeedClient() {
   }
 
   async function loadTimeline() {
-  try {
-    console.debug("Start loading timeline");
-    setLoading(true);
-    setError(null);
+    try {
+      console.debug("Start loading timeline");
+      setLoading(true);
+      setError(null);
 
-    const res = await fetch(
-      `${API_BASE}/api/bsky/timeline?limit=30&source=${feedSource}`,
-      { cache: "no-store", credentials: "include" }
-    );
-    console.debug("[timeline/resp]", res.status);
+      const res = await fetch(
+        `${API_BASE}/api/bsky/timeline?limit=30&source=${feedSource}`,
+        { cache: "no-store", credentials: "include" }
+      );
+      console.debug("[timeline/resp]", res.status);
 
-    // NEW: keep the 'user' tab selected; show banner; empty feed
-    if (res.status === 401 && feedSource === "user") {
-      setPosts([]);                    // show empty feed under the banner
-      setError(null);                  // avoid red error box
-      setEffectiveSource("user");      // “Showing: Following (You)”
+      // NEW: keep the 'user' tab selected; show banner; empty feed
+      if (res.status === 401 && feedSource === "user") {
+        setPosts([]); // show empty feed under the banner
+        setError(null); // avoid red error box
+        setEffectiveSource("user"); // “Showing: Following (You)”
+        setLoading(false);
+        return; // stop here
+      }
+
+      const servedBy = res.headers.get("X-IR-Source") as FeedSource | null;
+      console.debug("[timeline/header]", servedBy);
+      if (servedBy === "app" || servedBy === "user") {
+        setEffectiveSource(servedBy);
+      }
+
+      if (!res.ok) throw new Error(`Timeline error ${res.status}`);
+
+      const data = await res.json();
+      const mapped = mapTimelineToPosts(data);
+      const uniq = Array.from(new Map(mapped.map((p) => [p.id, p])).values());
+      setPosts(uniq);
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to load timeline");
+    } finally {
       setLoading(false);
-      return;                          // stop here
     }
-
-    const servedBy = res.headers.get("X-IR-Source") as FeedSource | null;
-    console.debug("[timeline/header]", servedBy);
-    if (servedBy === "app" || servedBy === "user") {
-      setEffectiveSource(servedBy);
-    }
-
-    if (!res.ok) throw new Error(`Timeline error ${res.status}`);
-
-    const data = await res.json();
-    const mapped = mapTimelineToPosts(data);
-    const uniq = Array.from(new Map(mapped.map((p) => [p.id, p])).values());
-    setPosts(uniq);
-  } catch (e: any) {
-    setError(e?.message ?? "Failed to load timeline");
-  } finally {
-    setLoading(false);
   }
-}
 
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch(`${API_BASE}/api/prefs`, {
+          credentials: "include",
+        });
+        if (r.ok) {
+          const j = await r.json();
+          if (j.defaultFeed === "user" || j.defaultFeed === "app") {
+            setFeedSource(j.defaultFeed);
+          }
+        }
+      } catch {}
+    })();
+  }, []);
 
   // Check Bluesky connection in the browser
   useEffect(() => {

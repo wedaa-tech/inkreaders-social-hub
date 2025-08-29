@@ -553,4 +553,161 @@ func (h *Handlers) Who(w http.ResponseWriter, r *http.Request, s *SessionData) {
 }
 
 
+// --- Profile DTOs ---
+type profileOut struct {
+  DID         string  `json:"did"`
+  Handle      string  `json:"handle"`
+  DisplayName string  `json:"displayName"`
+  AvatarURL   string  `json:"avatarUrl"`
+  Bio         string  `json:"bio"`
+  // remote (from Bluesky) for FYI/preview
+  Remote struct {
+    DisplayName string `json:"displayName"`
+    Avatar      string `json:"avatar"`
+    Description string `json:"description"`
+  } `json:"remote"`
+}
+
+type profileUpdateIn struct {
+  DisplayName *string `json:"displayName,omitempty"`
+  Bio         *string `json:"bio,omitempty"`
+  AvatarURL   *string `json:"avatarUrl,omitempty"`
+}
+
+// GET /api/profile  (requires session)
+func (h *Handlers) ProfileGet(w http.ResponseWriter, r *http.Request, s *SessionData) {
+  ctx := r.Context()
+
+  // 1) Load local overrides from DB
+  var local struct{
+    DisplayName string
+    AvatarURL   string
+    Bio         string
+    Handle      string
+  }
+  err := h.Store.Pool.QueryRow(ctx, `
+    select coalesce(display_name,''), coalesce(avatar_url,''), coalesce(bio,''), handle
+    from accounts where id=$1
+  `, s.AccountID).Scan(&local.DisplayName, &local.AvatarURL, &local.Bio, &local.Handle)
+  if err != nil { http.Error(w, "db error: "+err.Error(), 500); return }
+
+  // 2) Fetch remote Bluesky profile (best-effort)
+  var remote struct{
+    DisplayName string `json:"displayName"`
+    Avatar      string `json:"avatar"`
+    Description string `json:"description"`
+  }
+  // app.bsky.actor.getProfile?actor=<did or handle>
+  u := s.PDSBase + "/xrpc/app.bsky.actor.getProfile?actor=" + s.DID
+  req, _ := http.NewRequestWithContext(ctx, "GET", u, nil)
+  req.Header.Set("Authorization", "Bearer "+s.AccessJWT)
+  if resp, err := http.DefaultClient.Do(req); err == nil && resp.StatusCode == 200 {
+    defer resp.Body.Close()
+    _ = json.NewDecoder(resp.Body).Decode(&remote)
+  }
+
+  out := profileOut{
+    DID:         s.DID,
+    Handle:      local.Handle,
+    DisplayName: local.DisplayName,
+    AvatarURL:   local.AvatarURL,
+    Bio:         local.Bio,
+  }
+  out.Remote.DisplayName = remote.DisplayName
+  out.Remote.Avatar      = remote.Avatar
+  out.Remote.Description = remote.Description
+
+  w.Header().Set("Content-Type", "application/json")
+  _ = json.NewEncoder(w).Encode(out)
+}
+
+// PUT /api/profile  (requires session)
+func (h *Handlers) ProfileUpdate(w http.ResponseWriter, r *http.Request, s *SessionData) {
+  ctx := r.Context()
+  var in profileUpdateIn
+  if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+    http.Error(w, "bad json", 400); return
+  }
+
+  // Build dynamic update only for provided fields
+  q := "update accounts set "
+  args := []any{}
+  set := []string{}
+  if in.DisplayName != nil { set = append(set, "display_name=$"+fmt.Sprint(len(args)+1)); args = append(args, *in.DisplayName) }
+  if in.AvatarURL   != nil { set = append(set, "avatar_url=$"+fmt.Sprint(len(args)+1));   args = append(args, *in.AvatarURL) }
+  if in.Bio         != nil { set = append(set, "bio=$"+fmt.Sprint(len(args)+1));         args = append(args, *in.Bio) }
+  if len(set) == 0 { w.WriteHeader(204); return }
+  q += strings.Join(set, ", ") + ", updated_at=now() where id=$"+fmt.Sprint(len(args)+1)
+  args = append(args, s.AccountID)
+
+  if _, err := h.Store.Pool.Exec(ctx, q, args...); err != nil {
+    http.Error(w, "db error: "+err.Error(), 500); return
+  }
+  w.WriteHeader(204)
+}
+
+// --- Prefs ---
+type prefs struct {
+  DefaultFeed string `json:"defaultFeed"` // 'app' | 'user'
+}
+
+// GET /api/prefs
+func (h *Handlers) PrefsGet(w http.ResponseWriter, r *http.Request, s *SessionData) {
+  ctx := r.Context()
+  var p prefs
+  err := h.Store.Pool.QueryRow(ctx, `
+    select default_feed from user_prefs where user_id=$1
+  `, s.AccountID).Scan(&p.DefaultFeed)
+  if err != nil {
+    // default if none
+    p.DefaultFeed = "app"
+  }
+  _ = json.NewEncoder(w).Encode(p)
+}
+
+// PUT /api/prefs
+func (h *Handlers) PrefsUpdate(w http.ResponseWriter, r *http.Request, s *SessionData) {
+  ctx := r.Context()
+  var in prefs
+  if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+    http.Error(w, "bad json", 400); return
+  }
+  if in.DefaultFeed != "app" && in.DefaultFeed != "user" {
+    http.Error(w, "invalid defaultFeed", 400); return
+  }
+  _, _ = h.Store.Pool.Exec(ctx, `
+    insert into user_prefs (user_id, default_feed) values ($1,$2)
+    on conflict (user_id) do update set default_feed=excluded.default_feed, updated_at=now()
+  `, s.AccountID, in.DefaultFeed)
+  w.WriteHeader(204)
+}
+
+
+// POST /api/profile/sync-from-remote
+func (h *Handlers) ProfileSyncFromRemote(w http.ResponseWriter, r *http.Request, s *SessionData) {
+  ctx := r.Context()
+  // fetch remote
+  u := s.PDSBase + "/xrpc/app.bsky.actor.getProfile?actor=" + s.DID
+  req, _ := http.NewRequestWithContext(ctx, "GET", u, nil)
+  req.Header.Set("Authorization", "Bearer "+s.AccessJWT)
+  resp, err := http.DefaultClient.Do(req)
+  if err != nil || resp.StatusCode != 200 {
+    http.Error(w, "remote fetch failed", 502); return
+  }
+  defer resp.Body.Close()
+  var remote struct{
+    DisplayName string `json:"displayName"`
+    Avatar      string `json:"avatar"`
+    Description string `json:"description"`
+  }
+  _ = json.NewDecoder(resp.Body).Decode(&remote)
+  // save locally
+  _, err = h.Store.Pool.Exec(ctx, `
+    update accounts set display_name=$1, avatar_url=$2, bio=$3, updated_at=now()
+    where id=$4
+  `, remote.DisplayName, remote.Avatar, remote.Description, s.AccountID)
+  if err != nil { http.Error(w, "db error", 500); return }
+  w.WriteHeader(204)
+}
+
 

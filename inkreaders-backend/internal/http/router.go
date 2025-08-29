@@ -65,5 +65,21 @@ func NewRouter(agent *xrpc.Client, did string, store *db.Store) *chi.Mux {
 	r.Get("/api/bsky/post-stats", h.PostStats)
 	r.Get("/api/bsky/timeline", auth.WithSessionOptional(h.Timeline))
 	r.Get("/api/debug/who", auth.WithSessionOptional(h.Who))
+
+	r.Get ("/api/profile",        auth.WithSession(h.ProfileGet))   // GET local + remote (Bluesky) snapshot
+	r.Put ("/api/profile",        auth.WithSession(h.ProfileUpdate))// PUT local overrides
+	r.Get ("/api/prefs",          auth.WithSession(h.PrefsGet))     // GET user prefs
+	r.Put ("/api/prefs",          auth.WithSession(h.PrefsUpdate))  // PUT user prefs
+	r.Post("/api/profile/sync-from-remote", auth.WithSession(h.ProfileSyncFromRemote))
+
+	// Optional: quick whoami header check (kept)
+	r.Get ("/api/debug/who", func(w http.ResponseWriter, r *http.Request) {
+	if s, _ := auth.ResolveSession(r); s != nil {
+		_ = json.NewEncoder(w).Encode(map[string]any{"hasSession":true,"did":s.DID,"handle":s.Handle})
+		return
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{"hasSession":false})
+	})
+
 	return r
 }
