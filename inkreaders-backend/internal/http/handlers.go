@@ -439,3 +439,70 @@ func (h *Handlers) PostStats(w http.ResponseWriter, r *http.Request) {
 		"replies": p.ReplyCount,
 	})
 }
+
+// ==== TIMELINE ====
+// GET /api/bsky/timeline?limit=30&cursor=...&source=auto|app|user
+// - auto (default): if session exists -> user, else -> app
+// - app: always use InkReaders app account agent
+// - user: require ink_sid (401 if missing)
+func (h *Handlers) Timeline(w http.ResponseWriter, r *http.Request, s *SessionData) {
+	ctx := r.Context()
+	q := r.URL.Query()
+	limit := q.Get("limit")
+	if limit == "" { limit = "30" }
+	cursor := q.Get("cursor")
+	source := q.Get("source") // "", "auto", "app", "user"
+	if source == "" { source = "auto" }
+
+	// Decide which identity to use
+	useUser := false
+	switch source {
+	case "user":
+		if s == nil {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		useUser = true
+	case "app":
+		useUser = false
+	default: // auto
+		useUser = (s != nil)
+	}
+
+	params := map[string]any{
+		"limit": limit,
+	}
+	if cursor != "" {
+		params["cursor"] = cursor
+	}
+
+	// Call app.bsky.feed.getTimeline
+	if useUser {
+		// user session: GET with Bearer to user's PDS
+		// Build URL: /xrpc/app.bsky.feed.getTimeline?limit=..&cursor=..
+		u := s.PDSBase + "/xrpc/app.bsky.feed.getTimeline?limit=" + limit
+		if cursor != "" { u += "&cursor=" + cursor }
+		req, _ := http.NewRequestWithContext(ctx, "GET", u, nil)
+		req.Header.Set("Authorization", "Bearer "+s.AccessJWT)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil { http.Error(w, err.Error(), 502); return }
+		defer resp.Body.Close()
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			b, _ := io.ReadAll(resp.Body)
+			http.Error(w, string(b), 502)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.Copy(w, resp.Body)
+		return
+	}
+
+	// app account via indigo client
+	var out map[string]any
+	if err := h.agent.Do(ctx, xrpc.Query, "", "app.bsky.feed.getTimeline", params, nil, &out); err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	_ = json.NewEncoder(w).Encode(out)
+}
+

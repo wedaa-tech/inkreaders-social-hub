@@ -63,6 +63,8 @@ func NewRouter(agent *xrpc.Client, did string, store *db.Store) *chi.Mux {
 	r.Post("/api/bsky/follow",  auth.WithSessionOptional(h.Follow))
 	r.Post("/api/bsky/post",    auth.WithSessionOptional(h.Post))
 	r.Get("/api/bsky/post-stats", h.PostStats)
+	r.Get("/api/bsky/timeline", auth.WithSessionOptional(h.Timeline))
+
 
 	return r
 }

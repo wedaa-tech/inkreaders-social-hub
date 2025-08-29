@@ -31,6 +31,8 @@ type Post = {
   };
 };
 
+type FeedSource = "app" | "user";
+
 function extractImages(embed: any): string[] {
   if (!embed) return [];
   // direct images
@@ -642,6 +644,8 @@ export default function FeedClient() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [feedSource, setFeedSource] = useState<"app" | "user">("app");
+  const [bsConnected, setBsConnected] = useState<boolean>(false);
 
   function mapTimelineToPosts(data: any): Post[] {
     const feed = Array.isArray(data?.feed) ? data.feed : [];
@@ -684,14 +688,20 @@ export default function FeedClient() {
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch("/api/bsky/timeline?limit=30", {
+
+      const qs = new URLSearchParams({
+        limit: "30",
+        source: feedSource, // "app" or "user"
+      });
+
+      const res = await fetch(`/api/bsky/timeline?${qs.toString()}`, {
         cache: "no-store",
+        credentials: "include", // ensure ink_sid (Bluesky session) is sent
       });
       if (!res.ok) throw new Error(`Timeline error ${res.status}`);
-      const data = await res.json();
 
+      const data = await res.json();
       const mapped = mapTimelineToPosts(data);
-      // de-dupe the freshly mapped list (not the stale state)
       const uniq = Array.from(new Map(mapped.map((p) => [p.id, p])).values());
       setPosts(uniq);
     } catch (e: any) {
@@ -703,7 +713,8 @@ export default function FeedClient() {
 
   useEffect(() => {
     loadTimeline();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [feedSource]);
 
   async function handlePost(
     p: Omit<Post, "id" | "createdAt" | "likes" | "reposts" | "replies">
@@ -767,6 +778,48 @@ export default function FeedClient() {
   return (
     <div className="space-y-4">
       <Composer onPost={handlePost} />
+      {/* Feed tabs */}
+      <div className="rounded-2xl border border-gray-200 bg-white p-2">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setFeedSource("app")}
+            className={
+              "rounded-xl px-3 py-1 text-sm " +
+              (feedSource === "app"
+                ? "bg-[color:var(--color-brand)] text-white"
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200")
+            }
+          >
+            For You
+          </button>
+          <button
+            type="button"
+            onClick={() => setFeedSource("user")}
+            className={
+              "rounded-xl px-3 py-1 text-sm " +
+              (feedSource === "user"
+                ? "bg-[color:var(--color-brand)] text-white"
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200")
+            }
+            disabled={!bsConnected}
+            title={bsConnected ? "Your following" : "Connect Bluesky to enable"}
+          >
+            Following (You)
+          </button>
+
+          {/* Spacer + optional connection hint */}
+          {!bsConnected && feedSource === "user" && (
+            <div className="ml-auto text-sm text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg">
+              Connect Bluesky to see your following feed.{" "}
+              <a href="/settings" className="underline">
+                Connect now
+              </a>
+            </div>
+          )}
+        </div>
+      </div>
+
       {loading && (
         <div className="rounded-2xl border border-gray-200 bg-white p-4">
           Loading…
