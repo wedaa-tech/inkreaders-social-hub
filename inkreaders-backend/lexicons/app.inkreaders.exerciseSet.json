@@ -1,0 +1,53 @@
+{
+  "lexicon": 1,
+  "id": "app.inkreaders.exerciseSet",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["title","format","questions","meta","allowRemix","visibility"],
+        "properties": {
+          "title": {"type":"string","maxLength":200},
+          "format": {"type":"string","enum":["mcq","fill_blank","true_false","mixed"]},
+          "questions": {"type":"array","items":{"type":"ref","ref":"#question"},"maxLength":500},
+          "meta": {"type":"ref","ref":"#meta"},
+          "parent": {"type":"ref","ref":"com.atproto.repo.strongRef"},
+          "allowRemix": {"type":"boolean"},
+          "visibility": {"type":"string","enum":["public","unlisted"]},
+          "createdAt": {"type":"string","format":"datetime"}
+        }
+      }
+    },
+    "question": {
+      "type":"object",
+      "required":["type","q","answer"],
+      "properties":{
+        "type":{"type":"string","enum":["mcq","fill_blank","true_false"]},
+        "q":{"type":"string","maxLength":2000},
+        "options":{"type":"array","items":{"type":"string"},"maxLength":8},
+        "answer":{"type":"unknown"},
+        "explain":{"type":"string","maxLength":1000}
+      }
+    },
+    "meta": {
+      "type":"object",
+      "required":["language","difficulty","source"],
+      "properties":{
+        "language":{"type":"string","maxLength":16},
+        "difficulty":{"type":"string","enum":["easy","medium","hard","mixed"]},
+        "source":{
+          "type":"object",
+          "required":["type"],
+          "properties":{
+            "type":{"type":"string","enum":["topic","text","file","remix"]},
+            "topic":{"type":"string"},
+            "fileCid":{"type":"string"},
+            "note":{"type":"string","maxLength":200}
+          }
+        }
+      }
+    }
+  }
+}

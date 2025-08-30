@@ -8,7 +8,7 @@ import (
 
 	"github.com/joho/godotenv"
 
-	"github.com/wedaa-tech/inkreaders-social-hub/inkreaders-backend/internal/atproto"
+	"github.com/wedaa-tech/inkreaders-social-hub/inkreaders-backend/internal/bootstrap"
 	"github.com/wedaa-tech/inkreaders-social-hub/inkreaders-backend/internal/config"
 	"github.com/wedaa-tech/inkreaders-social-hub/inkreaders-backend/internal/db"
 	"github.com/wedaa-tech/inkreaders-social-hub/inkreaders-backend/internal/indexer"
@@ -22,10 +22,8 @@ func main() {
 		log.Fatalf("config: %v", err)
 	}
 
-	agent, did, err := atproto.NewAgent(cfg)
-	if err != nil {
-		log.Fatalf("atproto login: %v", err)
-	}
+	// 🔑 Login with app account
+	agent, did := bootstrap.NewAppAgent(cfg)
 
 	ctx := context.Background()
 	store, err := db.Open(ctx, getenv("DB_DSN"))
@@ -36,26 +34,35 @@ func main() {
 
 	ix := indexer.New(agent, did, store)
 
-			// after login (both main.go files)
 	log.Printf("Logged in as DID=%s Handle=%s", did, cfg.Handle)
-	// after reading DB_DSN (both)
 	log.Printf("DB_DSN=%s", os.Getenv("DB_DSN"))
-
 	log.Println("mini indexer: polling every 20s (books & articles)")
+
 	ticker := time.NewTicker(20 * time.Second)
 	defer ticker.Stop()
 
-	// do an initial poll
-	if err := ix.PollBookPosts(ctx, 50); err != nil { log.Println("poll book:", err) }
-	if err := ix.PollArticlePosts(ctx, 50); err != nil { log.Println("poll article:", err) }
+	// initial poll
+	if err := ix.PollBookPosts(ctx, 50); err != nil {
+		log.Println("poll book:", err)
+	}
+	if err := ix.PollArticlePosts(ctx, 50); err != nil {
+		log.Println("poll article:", err)
+	}
 
 	for range ticker.C {
-		if err := ix.PollBookPosts(ctx, 50); err != nil { log.Println("poll book:", err) }
-		if err := ix.PollArticlePosts(ctx, 50); err != nil { log.Println("poll article:", err) }
+		if err := ix.PollBookPosts(ctx, 50); err != nil {
+			log.Println("poll book:", err)
+		}
+		if err := ix.PollArticlePosts(ctx, 50); err != nil {
+			log.Println("poll article:", err)
+		}
 	}
 }
 
 func getenv(k string) string {
-	if v := os.Getenv(k); v != "" { return v }
-	log.Fatalf("%s required", k); return ""
+	if v := os.Getenv(k); v != "" {
+		return v
+	}
+	log.Fatalf("%s required", k)
+	return ""
 }

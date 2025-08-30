@@ -1,15 +1,14 @@
-// cmd/server/main.go
 package main
 
 import (
-	"context"           // ✅ add
+	"context"
 	"log"
 	"net/http"
-	"os"                // ✅ add
+	"os"
 
 	"github.com/joho/godotenv"
-
-	"github.com/wedaa-tech/inkreaders-social-hub/inkreaders-backend/internal/atproto"
+	"github.com/wedaa-tech/inkreaders-social-hub/inkreaders-backend/internal/ai"
+	"github.com/wedaa-tech/inkreaders-social-hub/inkreaders-backend/internal/bootstrap"
 	"github.com/wedaa-tech/inkreaders-social-hub/inkreaders-backend/internal/config"
 	"github.com/wedaa-tech/inkreaders-social-hub/inkreaders-backend/internal/db"
 	httph "github.com/wedaa-tech/inkreaders-social-hub/inkreaders-backend/internal/http"
@@ -23,15 +22,11 @@ func main() {
 		log.Fatalf("config: %v", err)
 	}
 
-	agent, did, err := atproto.NewAgent(cfg)
-	if err != nil {
-		log.Fatalf("atproto login: %v", err)
-	}
+	// 🔑 Login with app account
+	agent, did := bootstrap.NewAppAgent(cfg)
 
-	// DB
 	ctx := context.Background()
 	dsn := os.Getenv("DB_DSN")
-
 	if dsn == "" {
 		log.Fatal("DB_DSN required")
 	}
@@ -41,14 +36,17 @@ func main() {
 	}
 	defer store.Close()
 
-	// Router (note: NewRouter now needs store)
-	r := httph.NewRouter(agent, did, store)
+	// --- Deps (stubs for now) ---
+	aiClient := ai.NewStub()
+	pub := httph.NoopPublisher{}
+	storage := httph.NewLocalStorage("./data/uploads")
+	extract := httph.NewExtractor()
 
-		// after login (both main.go files)
+	// Build router
+	r := httph.NewRouter(agent, did, store, aiClient, pub, storage, extract)
+
 	log.Printf("Logged in as DID=%s Handle=%s", did, cfg.Handle)
-	// after reading DB_DSN (both)
 	log.Printf("DB_DSN=%s", os.Getenv("DB_DSN"))
-	
 	log.Printf("server listening on :%s", cfg.Port)
 	log.Fatal(http.ListenAndServe(":"+cfg.Port, r))
 }
