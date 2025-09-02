@@ -38,8 +38,8 @@ type Handlers struct {
 // Interfaces --------------------------------------------------------
 
 type Publisher interface {
-	PublishExerciseSet(ctx context.Context, s *SessionData, set db.ExerciseSet, allowRemix bool) (uri, cid string, err error)
-	CreateExercisePost(ctx context.Context, s *SessionData, exerciseURI, exerciseCID, title string, previewCount int) error
+    PublishExerciseSet(ctx context.Context, s *SessionData, set db.ExerciseSet, allowRemix bool) (string, string, string, error)
+    CreateExercisePost(ctx context.Context, s *SessionData, exerciseURI, exerciseCID, title string, previewCount int) error
 }
 
 

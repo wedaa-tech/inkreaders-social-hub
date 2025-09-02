@@ -3,11 +3,13 @@ package http
 import (
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
-	"path/filepath"
 	"time"
 	"log"
+	"io"
+	"path/filepath"
+
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/wedaa-tech/inkreaders-social-hub/inkreaders-backend/internal/ai"
@@ -54,36 +56,6 @@ func (h *Handlers) ExercisesGenerate(w http.ResponseWriter, r *http.Request, s *
 		req.Language = "en"
 	}
 
-	// Prepare source text
-	var sourceText string
-	switch req.Source.Type {
-	case "topic":
-	case "text":
-		sourceText = req.Text
-	case "file":
-		if req.FileID == nil {
-			BadRequest(w, "file_id_required")
-			return
-		}
-		file, err := h.DB.GetFile(r.Context(), *req.FileID, s.AccountID)
-		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				NotFound(w)
-			} else {
-				ServerError(w, err)
-			}
-			return
-		}
-		content, err := h.Storage.Read(r.Context(), file.StorageKey)
-		if err != nil {
-			ServerError(w, err)
-			return
-		}
-		sourceText = h.Extract.PlainText(file.Mime, content)
-	default:
-		req.Source.Type = "topic"
-	}
-
 	// AI call
 	out, err := h.AI.Generate(r.Context(), ai.GenerateParams{
 		Title:      req.Title,
@@ -92,24 +64,20 @@ func (h *Handlers) ExercisesGenerate(w http.ResponseWriter, r *http.Request, s *
 		Count:      req.Count,
 		Language:   req.Language,
 		Difficulty: req.Difficulty,
-		SourceText: sourceText,
 	})
-
 	if err != nil {
-		// Instead of crashing → return fallback empty set
 		set := db.ExerciseSet{
 			ID:     uuid.New().String(),
 			UserID: "",
 			Title:  coalesce(req.Title, "Untitled Exercise"),
 			Format: "mcq",
-			Questions: []db.Question{}, // ✅ ensure array not nil
+			Questions: []db.Question{},
 			Meta: db.ExerciseMeta{
 				Difficulty: req.Difficulty,
 				Language:   req.Language,
 				Source: db.ExerciseSource{
-					Type:   req.Source.Type,
-					Topic:  req.Topic,
-					FileID: req.FileID,
+					Type:  req.Source.Type,
+					Topic: req.Topic,
 				},
 				SeedSetID: req.SeedSetID,
 			},
@@ -126,7 +94,7 @@ func (h *Handlers) ExercisesGenerate(w http.ResponseWriter, r *http.Request, s *
 
 	userID := s.AccountID
 	if userID == "" {
-		userID = h.did // fallback to app DID
+		userID = h.did // fallback
 	}
 
 	set := db.ExerciseSet{
@@ -134,14 +102,13 @@ func (h *Handlers) ExercisesGenerate(w http.ResponseWriter, r *http.Request, s *
 		UserID: userID,
 		Title:  coalesce(req.Title, out.InferredTitle),
 		Format: out.InferredFormat,
-		Questions: out.Questions, // ✅ guaranteed array from AI
+		Questions: out.Questions,
 		Meta: db.ExerciseMeta{
 			Difficulty: req.Difficulty,
 			Language:   req.Language,
 			Source: db.ExerciseSource{
-				Type:   req.Source.Type,
-				Topic:  req.Topic,
-				FileID: req.FileID,
+				Type:  req.Source.Type,
+				Topic: req.Topic,
 			},
 			SeedSetID: req.SeedSetID,
 		},
@@ -152,46 +119,39 @@ func (h *Handlers) ExercisesGenerate(w http.ResponseWriter, r *http.Request, s *
 	WriteJSON(w, http.StatusOK, map[string]any{"exercise_set": set})
 }
 
-
 // === Save Exercises ===
-
 func (h *Handlers) ExercisesSave(w http.ResponseWriter, r *http.Request, s *SessionData) {
-    var req ExercisesSaveReq
-    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-        BadRequest(w, "invalid_json")
-        return
-    }
+	var req ExercisesSaveReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		BadRequest(w, "invalid_json")
+		return
+	}
 
-    // generate UUID if empty
-    if req.ExerciseSet.ID == "" {
-        req.ExerciseSet.ID = uuid.New().String()
-    }
+	if req.ExerciseSet.ID == "" {
+		req.ExerciseSet.ID = uuid.New().String()
+	}
 
-    req.ExerciseSet.UserID = s.AccountID
-    req.ExerciseSet.Visibility = normalizeVisibility(req.Visibility)
+	req.ExerciseSet.UserID = s.AccountID
+	req.ExerciseSet.Visibility = normalizeVisibility(req.Visibility)
 
-    if err := h.DB.InsertExerciseSet(r.Context(), &req.ExerciseSet); err != nil {
-        ServerError(w, err)
-        return
-    }
+	if err := h.DB.InsertExerciseSet(r.Context(), &req.ExerciseSet); err != nil {
+		ServerError(w, err)
+		return
+	}
 
-    WriteJSON(w, http.StatusOK, map[string]string{"id": req.ExerciseSet.ID, "status": "saved"})
+	WriteJSON(w, http.StatusOK, map[string]string{"id": req.ExerciseSet.ID, "status": "saved"})
 }
-
 
 // === List My Exercises ===
 func (h *Handlers) ExercisesMine(w http.ResponseWriter, r *http.Request, s *SessionData) {
-    items, _, err := h.DB.ListExerciseSets(r.Context(), s.AccountID, "", 50, "all")
-    if err != nil {
-        // log exact DB error
-        log.Printf("ListExerciseSets error: %+v", err)
-        ServerError(w, err)
-        return
-    }
-    WriteJSON(w, http.StatusOK, map[string]any{"items": items})
+	items, _, err := h.DB.ListExerciseSets(r.Context(), s.AccountID, "", 50, "all")
+	if err != nil {
+		log.Printf("ListExerciseSets error: %+v", err)
+		ServerError(w, err)
+		return
+	}
+	WriteJSON(w, http.StatusOK, map[string]any{"items": items})
 }
-
-
 
 // === Get One Exercise ===
 func (h *Handlers) ExercisesGet(w http.ResponseWriter, r *http.Request, s *SessionData) {
@@ -232,9 +192,6 @@ func (h *Handlers) ExercisesUpdate(w http.ResponseWriter, r *http.Request, s *Se
 }
 
 // === Publish Exercise ===
-// === Publish Exercise ===
-// === Publish Exercise ===
-// === Publish Exercise ===
 func (h *Handlers) ExercisesPublish(w http.ResponseWriter, r *http.Request, s *SessionData) {
 	id := Param(r, "id")
 	var req struct {
@@ -250,39 +207,31 @@ func (h *Handlers) ExercisesPublish(w http.ResponseWriter, r *http.Request, s *S
 		return
 	}
 
-	// 2. Publish custom record into com.inkreaders.exercise.post
-	uri, cid, err := h.Pub.PublishExerciseSet(r.Context(), s, set, req.AllowRemix)
+	// 2. Publish (returns 4 values now)
+	uri, cid, feedURI, err := h.Pub.PublishExerciseSet(r.Context(), s, set, req.AllowRemix)
 	if err != nil {
 		ServerError(w, err)
 		return
 	}
 
-	// 3. Optionally create feed post that embeds the exercise
-	if req.ToFeed {
-		if err := h.Pub.CreateExercisePost(r.Context(), s, uri, cid, set.Title, 5); err != nil {
-			ServerError(w, err)
-			return
-		}
-	}
-
-	// 4. Save to DB
+	// 3. Save to DB
 	_, err = h.DB.Pool.Exec(r.Context(),
 		`UPDATE exercise_sets 
-		 SET at_uri=$1, cid=$2, updated_at=now()
-		 WHERE id=$3 AND user_id=$4`,
-		uri, cid, id, s.AccountID)
+		 SET at_uri=$1, cid=$2, feed_uri=$3, updated_at=now()
+		 WHERE id=$4 AND user_id=$5`,
+		uri, cid, feedURI, id, s.AccountID)
 	if err != nil {
 		ServerError(w, err)
 		return
 	}
 
-	// 5. Response
+	// 4. Response
 	WriteJSON(w, http.StatusOK, map[string]string{
-		"at_uri": uri,
-		"cid":    cid,
+		"at_uri":   uri,
+		"cid":      cid,
+		"feed_uri": feedURI,
 	})
 }
-
 
 
 // === Remix Exercise ===
@@ -375,3 +324,4 @@ func generateStorageKey(userID, name string) string {
 	ext := filepath.Ext(name)
 	return "uploads/" + userID + "/" + ts + ext
 }
+

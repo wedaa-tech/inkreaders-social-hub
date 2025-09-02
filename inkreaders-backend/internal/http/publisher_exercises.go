@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"time"
 
@@ -19,47 +20,95 @@ func NewAtprotoPublisher(agent *xrpc.Client, did string) *AtprotoPublisher {
 	return &AtprotoPublisher{agent: agent, appDID: did}
 }
 
-func (p *AtprotoPublisher) PublishExerciseSet(ctx context.Context, s *SessionData, set db.ExerciseSet, allowRemix bool) (uri, cid string, err error) {
+// PublishExerciseSet → creates BOTH:
+//   1) custom record (com.inkreaders.exercise.post)
+//   2) standard feed post (app.bsky.feed.post)
+// Returns: exerciseURI, exerciseCID, feedURI, error
+func (p *AtprotoPublisher) PublishExerciseSet(
+	ctx context.Context,
+	s *SessionData,
+	set db.ExerciseSet,
+	allowRemix bool,
+) (uri, cid, feedURI string, err error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 
+	// --- Step 1: Custom record ---
 	body := map[string]any{
 		"repo":       repoFor(s, p.appDID),
 		"collection": "com.inkreaders.exercise.post",
 		"record": map[string]any{
-			"$type":     "com.inkreaders.exercise.post",
-			"createdAt": now,
-			"title":     set.Title,
-			"format":    set.Format,
-			"questions": set.Questions,
-			"meta":      set.Meta,
+			"$type":      "com.inkreaders.exercise.post",
+			"createdAt":  now,
+			"title":      set.Title,
+			"format":     set.Format,
+			"questions":  set.Questions,
+			"meta":       set.Meta,
 			"allowRemix": allowRemix,
 		},
 	}
-
-	// --- DEBUG LOGGING ---
-	b, _ := json.MarshalIndent(body, "", "  ")
-	log.Printf("[DEBUG] PublishExerciseSet payload:\n%s", string(b))
-	// ---------------------
 
 	var out struct {
 		URI string `json:"uri"`
 		CID string `json:"cid"`
 	}
-
 	if s != nil {
-		// publish as user
 		err = doXrpcAuth(ctx, s, "com.atproto.repo.createRecord", body, &out)
 	} else {
-		// fallback to app account
 		err = p.agent.Do(ctx, xrpc.Procedure, "application/json",
 			"com.atproto.repo.createRecord", nil, body, &out)
 	}
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
-	return out.URI, out.CID, nil
+
+	// --- Step 2: Feed post ---
+	feedText := fmt.Sprintf("📘 New Exercise: %s", set.Title)
+	if len(set.Questions) > 0 {
+		firstQ := set.Questions[0].Q
+		if len(firstQ) > 80 {
+			firstQ = firstQ[:77] + "..."
+		}
+		feedText += "\nQ1: " + firstQ
+	}
+
+	feedBody := map[string]any{
+		"repo":       repoFor(s, p.appDID),
+		"collection": "app.bsky.feed.post",
+		"record": map[string]any{
+			"$type":     "app.bsky.feed.post",
+			"createdAt": now,
+			"text":      feedText,
+			"embed": map[string]any{
+				"$type": "app.bsky.embed.record",
+				"record": map[string]any{
+					"uri": out.URI,
+					"cid": out.CID,
+				},
+			},
+		},
+	}
+
+	var feedOut struct {
+		URI string `json:"uri"`
+		CID string `json:"cid"`
+	}
+	if s != nil {
+		err = doXrpcAuth(ctx, s, "com.atproto.repo.createRecord", feedBody, &feedOut)
+	} else {
+		err = p.agent.Do(ctx, xrpc.Procedure, "application/json",
+			"com.atproto.repo.createRecord", nil, feedBody, &feedOut)
+	}
+	if err != nil {
+		return out.URI, out.CID, "", err
+	}
+
+	log.Printf("[DEBUG] Custom record published: %s (cid=%s)", out.URI, out.CID)
+	log.Printf("[DEBUG] Feed post created: %s (cid=%s)", feedOut.URI, feedOut.CID)
+
+	return out.URI, out.CID, feedOut.URI, nil
 }
 
+// CreateExercisePost is now just a thin wrapper if you want *only* a feed post
 func (p *AtprotoPublisher) CreateExercisePost(
     ctx context.Context,
     s *SessionData,
