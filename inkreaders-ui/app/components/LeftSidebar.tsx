@@ -40,15 +40,18 @@ export default function LeftSidebar() {
     setMe(null);
   }
 
-  const NAV = [
-    { label: "Home", icon: "🏠", href: "/" },
-    { label: "Discover", icon: "🔎", href: "/discover" },
-    { label: "Lists", icon: "📚", href: "/lists" },
-    { label: "Create", icon: "✍️", href: "/create" },
-    { label: "Notifications", icon: "🔔", href: "/notifications" },
-    { label: "Profile", icon: "👤", href: me ? `/u/${me.handle}` : "/settings" },
-    { label: "Settings", icon: "⚙️", href: "/settings" },
-  ];
+// inside LeftSidebar.tsx
+const NAV = [
+  { label: "Home", icon: "🏠", href: "/" },
+  { label: "Discover", icon: "🔎", href: "/discover" },
+  { label: "Lists", icon: "📚", href: "/lists" },
+  { label: "Create", icon: "✍️", href: "/create" },
+  { label: "Exercises", icon: "📝", href: "/exercises/mine" }, // 👈 added
+  { label: "Notifications", icon: "🔔", href: "/notifications" },
+  { label: "Profile", icon: "👤", href: me ? `/u/${me.handle}` : "/settings" },
+  { label: "Settings", icon: "⚙️", href: "/settings" },
+];
+
 
   const isOAuth = status === "authenticated";
   const userName = (session?.user?.name || session?.user?.email || "You");

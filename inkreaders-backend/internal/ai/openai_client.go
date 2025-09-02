@@ -43,9 +43,8 @@ func (c *OpenAIClient) Generate(ctx context.Context, p GenerateParams) (Generate
 	userPrompt := builderPrompt(p)
 
 	raw, err := c.chat(ctx, sysPrompt, userPrompt)
-	if err != nil {
-		return GenerateOut{}, err
-	}
+	if err != nil { return GenerateOut{}, err }
+	fmt.Printf("[AI raw output] %s\n", string(raw))
 
 	// 1) Parse JSON
 	var items []db.Question
@@ -90,7 +89,8 @@ Parent questions:
 
 	raw, err := c.chat(ctx, sysPrompt, userPrompt)
 	if err != nil { return db.ExerciseSet{}, err }
-
+	fmt.Printf("[AI raw output] %s\n", string(raw))
+		
 	var items []db.Question
 	if err := json.Unmarshal(raw, &items); err != nil {
 		trim := trimToJSONArray(string(raw))

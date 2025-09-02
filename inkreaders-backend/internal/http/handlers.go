@@ -39,8 +39,10 @@ type Handlers struct {
 
 type Publisher interface {
 	PublishExerciseSet(ctx context.Context, s *SessionData, set db.ExerciseSet, allowRemix bool) (uri, cid string, err error)
-	CreateExercisePost(ctx context.Context, s *SessionData, exerciseURI, title string, previewCount int) error
+	CreateExercisePost(ctx context.Context, s *SessionData, exerciseURI, exerciseCID, title string, previewCount int) error
 }
+
+
 
 type Extractor interface {
 	PlainText(mime string, blob []byte) string
