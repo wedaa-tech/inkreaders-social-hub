@@ -21,7 +21,7 @@ This doc captures the exact **cURL recipes**, **expected responses**, and **debu
 ```env
 BLUESKY_SERVICE=https://bsky.social
 BLUESKY_HANDLE=inkreaders.com
-BLUESKY_APP_PASSWORD=****
+BLUESKY_APP_PASSWORD=
 PORT=8080
 
 DB_DSN=postgres://ink:ink@localhost:5432/inkreaders?sslmode=disable
@@ -39,12 +39,6 @@ NEXT_PUBLIC_API_BASE=http://localhost:8080
 NEXTAUTH_URL=http://localhost:3000
 NEXTAUTH_SECRET=base64-32-byte-secret==
 
-# OAuth providers (if enabled)
-GOOGLE_ID=...
-GOOGLE_SECRET=...
-GITHUB_ID=...
-GITHUB_SECRET=...
-```
 
 > **Note:** On localhost we purposely set the session cookie as **Secure=false** so the browser will actually store it on `http://` origins.
 
