@@ -263,9 +263,7 @@ func (h *Handlers) ExercisesPublish(w http.ResponseWriter, r *http.Request, s *S
 			ServerError(w, err)
 			return
 		}
-		feedURI = out.URI // capture and save
 	}
-
 
 	// 4. Save to DB
 	_, err = h.DB.Pool.Exec(r.Context(),
