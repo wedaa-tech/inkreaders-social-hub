@@ -22,9 +22,7 @@ func NewAtprotoPublisher(agent *xrpc.Client, did string) *AtprotoPublisher {
 
 // PublishExerciseSet → creates BOTH:
 //   1) custom record (com.inkreaders.exercise.post)
-//   2) standard feed post (app.bsky.feed.post)
-// Returns: exerciseURI, exerciseCID, feedURI, error
-// internal/http/publisher_exercises.go
+//   2) standard feed post (app.bsky.feed.post, with facets & full review link)
 func (p *AtprotoPublisher) PublishExerciseSet(
 	ctx context.Context,
 	s *SessionData,
@@ -33,8 +31,8 @@ func (p *AtprotoPublisher) PublishExerciseSet(
 ) (uri, cid, feedURI string, err error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 
-	// --- Step 1: Publish custom record (opaque on Bluesky, used by Inkreaders) ---
-	customBody := map[string]any{
+	// --- Step 1: Custom record ---
+	body := map[string]any{
 		"repo":       repoFor(s, p.appDID),
 		"collection": "com.inkreaders.exercise.post",
 		"record": map[string]any{
@@ -48,24 +46,50 @@ func (p *AtprotoPublisher) PublishExerciseSet(
 		},
 	}
 
-	var customOut struct {
+	var out struct {
 		URI string `json:"uri"`
 		CID string `json:"cid"`
 	}
 	if s != nil {
-		err = doXrpcAuth(ctx, s, "com.atproto.repo.createRecord", customBody, &customOut)
+		err = doXrpcAuth(ctx, s, "com.atproto.repo.createRecord", body, &out)
 	} else {
 		err = p.agent.Do(ctx, xrpc.Procedure, "application/json",
-			"com.atproto.repo.createRecord", nil, customBody, &customOut)
+			"com.atproto.repo.createRecord", nil, body, &out)
 	}
 	if err != nil {
 		return "", "", "", err
 	}
 
-	// --- Step 2: Publish standard Bluesky feed post (teaser + link only) ---
-	previewURL := fmt.Sprintf("https://inkreaders.app/exercises/%s/preview", set.ID)
+	// --- Step 2: Feed post (clean text + clickable review link) ---
+	link := fmt.Sprintf("https://inkreaders.app/exercises/%s/preview", set.ID)
 
-	feedText := fmt.Sprintf("📘 New Exercise: %s\nTry it here 👉 %s", set.Title, previewURL)
+	feedText := fmt.Sprintf("📘 New Exercise: %s", set.Title)
+	if len(set.Questions) > 0 {
+		firstQ := set.Questions[0].Q
+		if len(firstQ) > 80 {
+			firstQ = firstQ[:77] + "..."
+		}
+		feedText += "\nQ1: " + firstQ
+	}
+	feedText += "\n\nSee full: " + link
+
+	// Add facet for link
+	start := len(feedText) - len(link)
+	end := len(feedText)
+	facets := []map[string]any{
+		{
+			"index": map[string]any{
+				"byteStart": start,
+				"byteEnd":   end,
+			},
+			"features": []map[string]any{
+				{
+					"$type": "app.bsky.richtext.facet#link",
+					"uri":   link,
+				},
+			},
+		},
+	}
 
 	feedBody := map[string]any{
 		"repo":       repoFor(s, p.appDID),
@@ -74,6 +98,7 @@ func (p *AtprotoPublisher) PublishExerciseSet(
 			"$type":     "app.bsky.feed.post",
 			"createdAt": now,
 			"text":      feedText,
+			"facets":    facets,
 		},
 	}
 
@@ -88,67 +113,57 @@ func (p *AtprotoPublisher) PublishExerciseSet(
 			"com.atproto.repo.createRecord", nil, feedBody, &feedOut)
 	}
 	if err != nil {
-		return customOut.URI, customOut.CID, "", err
+		return out.URI, out.CID, "", err
 	}
 
-	log.Printf("[DEBUG] Custom record published: %s (cid=%s)", customOut.URI, customOut.CID)
+	log.Printf("[DEBUG] Custom record published: %s (cid=%s)", out.URI, out.CID)
 	log.Printf("[DEBUG] Feed post created: %s (cid=%s)", feedOut.URI, feedOut.CID)
 
-	return customOut.URI, customOut.CID, feedOut.URI, nil
+	return out.URI, out.CID, feedOut.URI, nil
 }
 
-
-// CreateExercisePost is now just a thin wrapper if you want *only* a feed post
+// Legacy method (still here if needed elsewhere)
 func (p *AtprotoPublisher) CreateExercisePost(
-    ctx context.Context,
-    s *SessionData,
-    exerciseURI, exerciseCID, title string,
-    previewCount int,
+	ctx context.Context,
+	s *SessionData,
+	exerciseURI, exerciseCID, title string,
+	previewCount int,
 ) error {
-    now := time.Now().UTC().Format(time.RFC3339)
-    body := map[string]any{
-        "repo":       repoFor(s, p.appDID),
-        "collection": "app.bsky.feed.post",
-        "record": map[string]any{
-            "$type":     "app.bsky.feed.post",
-            "createdAt": now,
-            "text":      "📘 New Exercise: " + title,
-            "embed": map[string]any{
-                "$type": "app.bsky.embed.record",
-                "record": map[string]any{
-                    "uri": exerciseURI,
-                    "cid": exerciseCID, // ✅ required
-                },
-            },
-        },
-    }
+	now := time.Now().UTC().Format(time.RFC3339)
+	link := fmt.Sprintf("https://inkreaders.app/exercises/%s/preview", exerciseURI)
 
-    // --- DEBUG LOGGING ---
-    b, _ := json.MarshalIndent(body, "", "  ")
-    log.Printf("[DEBUG] CreateExercisePost payload:\n%s", string(b))
-    // ---------------------
+	body := map[string]any{
+		"repo":       repoFor(s, p.appDID),
+		"collection": "app.bsky.feed.post",
+		"record": map[string]any{
+			"$type":     "app.bsky.feed.post",
+			"createdAt": now,
+			"text":      "📘 New Exercise: " + title + "\n\nSee full: " + link,
+		},
+	}
 
-    var out struct {
-        URI string `json:"uri"`
-        CID string `json:"cid"`
-    }
+	// Debug
+	b, _ := json.MarshalIndent(body, "", "  ")
+	log.Printf("[DEBUG] CreateExercisePost payload:\n%s", string(b))
 
-    var err error
-    if s != nil {
-        err = doXrpcAuth(ctx, s, "com.atproto.repo.createRecord", body, &out)
-    } else {
-        err = p.agent.Do(ctx, xrpc.Procedure, "application/json",
-            "com.atproto.repo.createRecord", nil, body, &out)
-    }
+	var out struct {
+		URI string `json:"uri"`
+		CID string `json:"cid"`
+	}
+	var err error
+	if s != nil {
+		err = doXrpcAuth(ctx, s, "com.atproto.repo.createRecord", body, &out)
+	} else {
+		err = p.agent.Do(ctx, xrpc.Procedure, "application/json",
+			"com.atproto.repo.createRecord", nil, body, &out)
+	}
+	if err != nil {
+		return err
+	}
 
-    if err != nil {
-        return err
-    }
-
-    log.Printf("[DEBUG] Feed post created: %s (cid=%s)", out.URI, out.CID)
-    return nil
+	log.Printf("[DEBUG] Feed post created: %s (cid=%s)", out.URI, out.CID)
+	return nil
 }
-
 
 // helper: choose repo DID
 func repoFor(s *SessionData, appDID string) string {
