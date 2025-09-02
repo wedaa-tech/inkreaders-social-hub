@@ -1,3 +1,4 @@
+// app/exercises/generate/page.tsx
 "use client";
 
 import { useState } from "react";
@@ -43,10 +44,11 @@ export default function ExercisesGeneratePage() {
     }
   }
 
-  async function handlePreview() {
+  function handlePreview() {
     if (!exercise) return;
-    router.push(`/exercises/preview?data=${encodeURIComponent(JSON.stringify(exercise))}`);
-
+    // ✅ Save full JSON to sessionStorage
+    sessionStorage.setItem("previewExercise", JSON.stringify(exercise));
+    router.push("/exercises/preview");
   }
 
   return (

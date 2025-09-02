@@ -24,6 +24,7 @@ func NewAtprotoPublisher(agent *xrpc.Client, did string) *AtprotoPublisher {
 //   1) custom record (com.inkreaders.exercise.post)
 //   2) standard feed post (app.bsky.feed.post)
 // Returns: exerciseURI, exerciseCID, feedURI, error
+// internal/http/publisher_exercises.go
 func (p *AtprotoPublisher) PublishExerciseSet(
 	ctx context.Context,
 	s *SessionData,
@@ -32,8 +33,8 @@ func (p *AtprotoPublisher) PublishExerciseSet(
 ) (uri, cid, feedURI string, err error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 
-	// --- Step 1: Custom record ---
-	body := map[string]any{
+	// --- Step 1: Publish custom record (opaque on Bluesky, used by Inkreaders) ---
+	customBody := map[string]any{
 		"repo":       repoFor(s, p.appDID),
 		"collection": "com.inkreaders.exercise.post",
 		"record": map[string]any{
@@ -47,29 +48,24 @@ func (p *AtprotoPublisher) PublishExerciseSet(
 		},
 	}
 
-	var out struct {
+	var customOut struct {
 		URI string `json:"uri"`
 		CID string `json:"cid"`
 	}
 	if s != nil {
-		err = doXrpcAuth(ctx, s, "com.atproto.repo.createRecord", body, &out)
+		err = doXrpcAuth(ctx, s, "com.atproto.repo.createRecord", customBody, &customOut)
 	} else {
 		err = p.agent.Do(ctx, xrpc.Procedure, "application/json",
-			"com.atproto.repo.createRecord", nil, body, &out)
+			"com.atproto.repo.createRecord", nil, customBody, &customOut)
 	}
 	if err != nil {
 		return "", "", "", err
 	}
 
-	// --- Step 2: Feed post ---
-	feedText := fmt.Sprintf("📘 New Exercise: %s", set.Title)
-	if len(set.Questions) > 0 {
-		firstQ := set.Questions[0].Q
-		if len(firstQ) > 80 {
-			firstQ = firstQ[:77] + "..."
-		}
-		feedText += "\nQ1: " + firstQ
-	}
+	// --- Step 2: Publish standard Bluesky feed post (teaser + link only) ---
+	previewURL := fmt.Sprintf("https://inkreaders.app/exercises/%s/preview", set.ID)
+
+	feedText := fmt.Sprintf("📘 New Exercise: %s\nTry it here 👉 %s", set.Title, previewURL)
 
 	feedBody := map[string]any{
 		"repo":       repoFor(s, p.appDID),
@@ -78,13 +74,6 @@ func (p *AtprotoPublisher) PublishExerciseSet(
 			"$type":     "app.bsky.feed.post",
 			"createdAt": now,
 			"text":      feedText,
-			"embed": map[string]any{
-				"$type": "app.bsky.embed.record",
-				"record": map[string]any{
-					"uri": out.URI,
-					"cid": out.CID,
-				},
-			},
 		},
 	}
 
@@ -99,14 +88,15 @@ func (p *AtprotoPublisher) PublishExerciseSet(
 			"com.atproto.repo.createRecord", nil, feedBody, &feedOut)
 	}
 	if err != nil {
-		return out.URI, out.CID, "", err
+		return customOut.URI, customOut.CID, "", err
 	}
 
-	log.Printf("[DEBUG] Custom record published: %s (cid=%s)", out.URI, out.CID)
+	log.Printf("[DEBUG] Custom record published: %s (cid=%s)", customOut.URI, customOut.CID)
 	log.Printf("[DEBUG] Feed post created: %s (cid=%s)", feedOut.URI, feedOut.CID)
 
-	return out.URI, out.CID, feedOut.URI, nil
+	return customOut.URI, customOut.CID, feedOut.URI, nil
 }
+
 
 // CreateExercisePost is now just a thin wrapper if you want *only* a feed post
 func (p *AtprotoPublisher) CreateExercisePost(

@@ -1,36 +1,28 @@
 "use client";
 
-import { useSearchParams, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
 
 export default function PreviewExercise() {
-  const params = useSearchParams();
   const router = useRouter();
-
-  const raw = params.get("data");
+  const [exercise, setExercise] = useState<any | null>(null);
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [exerciseId, setExerciseId] = useState<string | null>(null);
+  const [feedUri, setFeedUri] = useState<string | null>(null);
 
-  if (!raw) {
-    return (
-      <div className="p-6 text-red-600">
-        No exercise data provided. Go back and generate one.
-      </div>
-    );
-  }
-
-  let exercise: any;
-  try {
-    exercise = JSON.parse(raw);
-  } catch {
-    return <p className="p-6 text-red-600">Invalid exercise preview data.</p>;
-  }
+  useEffect(() => {
+    const raw = sessionStorage.getItem("previewExercise");
+    if (raw) {
+      setExercise(JSON.parse(raw));
+    }
+  }, []);
 
   async function handleSave() {
+    if (!exercise) return;
     setSaving(true);
     try {
       const res = await fetch(`${API_BASE}/api/exercises/save`, {
@@ -68,13 +60,27 @@ export default function PreviewExercise() {
       );
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
-      alert("Published! AT URI: " + data.at_uri);
-      router.push("/exercises"); // back to listing
+      setFeedUri(data.feed_uri || null);
+      alert("Published!");
     } catch (err) {
       alert("Publish failed: " + err);
     } finally {
       setPublishing(false);
     }
+  }
+
+  function blueskyUrl(uri: string) {
+    const parts = uri.split("/");
+    if (parts.length >= 5) {
+      const did = parts[2];
+      const rkey = parts[4];
+      return `https://bsky.app/profile/${did}/post/${rkey}`;
+    }
+    return "#";
+  }
+
+  if (!exercise) {
+    return <p className="p-6 text-gray-500">No exercise to preview.</p>;
   }
 
   return (
@@ -89,20 +95,12 @@ export default function PreviewExercise() {
       <div className="bg-white rounded-xl p-6 shadow space-y-4">
         <h2 className="text-xl font-semibold">{exercise.title}</h2>
         <p className="text-gray-600">
-          {(exercise.format || "N/A").toUpperCase()} •{" "}
-          {exercise.questions?.length || 0} questions
-        </p>
-        <p className="text-sm text-gray-500">
-          Difficulty: {exercise.meta?.difficulty || "n/a"} • Language:{" "}
-          {exercise.meta?.language || "n/a"}
+          Format: {exercise.format} • {exercise.questions?.length || 0} questions
         </p>
 
         <ul className="space-y-3">
           {exercise.questions?.map((q: any, idx: number) => (
-            <li
-              key={idx}
-              className="rounded-lg border bg-gray-50 p-3 space-y-1"
-            >
+            <li key={idx} className="rounded-lg border bg-gray-50 p-3">
               <p className="font-medium">
                 Q{idx + 1}. {q.q}
               </p>
@@ -113,7 +111,7 @@ export default function PreviewExercise() {
                   ))}
                 </ul>
               )}
-              <p className="text-xs text-green-700">
+              <p className="text-sm text-green-700 mt-1">
                 Answer: {String(q.answer)}
               </p>
             </li>
@@ -128,18 +126,31 @@ export default function PreviewExercise() {
           >
             {saving ? "Saving..." : "Save"}
           </button>
-          <button
-            onClick={handlePublish}
-            disabled={publishing}
-            className="rounded-lg bg-green-600 text-white px-4 py-2 hover:bg-green-700 disabled:opacity-50"
-          >
-            {publishing ? "Publishing..." : "Publish"}
-          </button>
+
+          {!feedUri ? (
+            <button
+              onClick={handlePublish}
+              disabled={publishing}
+              className="rounded-lg bg-green-600 text-white px-4 py-2 hover:bg-green-700 disabled:opacity-50"
+            >
+              {publishing ? "Publishing..." : "Publish"}
+            </button>
+          ) : (
+            <a
+              href={blueskyUrl(feedUri)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-lg bg-green-600 text-white px-4 py-2 hover:bg-green-700"
+            >
+              View on Bluesky ↗
+            </a>
+          )}
+
           <Link
-            href="/exercises/generate"
+            href="/exercises"
             className="rounded-lg border px-4 py-2 hover:bg-gray-50"
           >
-            Back
+            Cancel
           </Link>
         </div>
       </div>

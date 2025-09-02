@@ -99,7 +99,7 @@ export default function ExercisePreviewPage() {
     <div className="max-w-3xl mx-auto p-6 space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold">Preview Exercise</h1>
-        <Link href="/exercises" className="text-blue-600 hover:underline">
+        <Link href="/exercises/mine" className="text-blue-600 hover:underline">
           ← Back
         </Link>
       </div>
