@@ -6,37 +6,7 @@ import ExerciseQuestion from "@/components/ExerciseQuestion";
 import ProgressBar from "@/components/ProgressBar";
 import QuestionNavigator from "@/components/QuestionNavigator";
 import ExerciseResults from "@/components/ExerciseResults";
-
-export type Exercise = {
-  id: string;
-  title: string;
-  difficulty: "easy" | "medium" | "hard" | "mixed";
-  questions: Question[];
-  createdAt: string;
-  author?: string;
-};
-
-export type Question = {
-  id: string;
-  type: "mcq" | "truefalse" | "fillblank" | "match";
-  prompt: string;
-  options?: string[];
-  correctAnswer: string | string[] | Record<string, string>;
-  explanation?: string;
-};
-
-export type UserAnswer = {
-  value: string | string[] | Record<string, string>;
-  isCorrect: boolean;
-  checked: boolean;
-};
-
-export type PracticeState = {
-  currentIndex: number;
-  answers: Record<string, UserAnswer>;
-  completed: boolean;
-  score: number;
-};
+import { normalizeExercise, Exercise, UserAnswer, PracticeState } from "@/lib/normalizeExercise";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
 
@@ -66,23 +36,8 @@ export default function ExercisePreviewPage() {
         const data = await res.json();
         const set = data.exercise_set;
 
-        const ex: Exercise = {
-          id: set.id,
-          title: set.title,
-          difficulty: set.meta?.difficulty || "mixed",
-          createdAt: set.created_at,
-          author: set.user_id,
-          questions: (set.questions || []).map((q: any, idx: number) => ({
-            id: q.id || `q${idx + 1}`,
-            type: q.type,
-            prompt: q.prompt || q.q,
-            options: q.options,
-            correctAnswer: q.correct_answer || q.answer,
-            explanation: q.explanation,
-          })),
-        };
-
-        setExercise(ex);
+        // ✅ Always normalize so correctAnswer is never undefined
+        setExercise(normalizeExercise(set));
       } catch (err) {
         console.error(err);
       } finally {
@@ -109,11 +64,9 @@ export default function ExercisePreviewPage() {
         String(value).trim().toLowerCase() ===
         q.correctAnswer.trim().toLowerCase();
     } else if (Array.isArray(q.correctAnswer)) {
-      isCorrect =
-        JSON.stringify(value) === JSON.stringify(q.correctAnswer);
+      isCorrect = JSON.stringify(value) === JSON.stringify(q.correctAnswer);
     } else if (typeof q.correctAnswer === "object") {
-      isCorrect =
-        JSON.stringify(value) === JSON.stringify(q.correctAnswer);
+      isCorrect = JSON.stringify(value) === JSON.stringify(q.correctAnswer);
     }
 
     setPractice((prev) => ({

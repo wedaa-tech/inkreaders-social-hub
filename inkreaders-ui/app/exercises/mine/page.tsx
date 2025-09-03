@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { normalizeExercise } from "@/lib/normalizeExercise";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
 
@@ -34,7 +35,13 @@ export default function ExercisesMinePage() {
       });
       if (res.ok) {
         const data = await res.json();
-        setItems(data.items || []);
+
+        // ✅ Normalize each exercise for consistency
+        const normalizedItems = (data.items || []).map((set: any) =>
+          normalizeExercise(set)
+        );
+
+        setItems(normalizedItems);
       }
     } finally {
       setLoading(false);
@@ -159,7 +166,7 @@ export default function ExercisesMinePage() {
                 {it.title}
               </h2>
               <p className="text-sm text-gray-500 mt-2">
-                {it.format.toUpperCase()} •{" "}
+                {it.questions[0]?.type?.toUpperCase() || it.format?.toUpperCase()} •{" "}
                 <span className="capitalize">{it.visibility}</span>
               </p>
               {it.meta?.difficulty && (
@@ -168,7 +175,7 @@ export default function ExercisesMinePage() {
                 </p>
               )}
               <p className="text-xs text-gray-400 mt-1">
-                {new Date(it.created_at).toLocaleString()}
+                {new Date(it.createdAt || it.created_at).toLocaleString()}
               </p>
 
               <div className="mt-4 flex flex-wrap gap-4 text-sm">

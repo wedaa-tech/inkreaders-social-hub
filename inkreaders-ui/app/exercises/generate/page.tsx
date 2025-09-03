@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { normalizeExercise, Exercise } from "@/lib/normalizeExercise";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
 
 export default function ExercisesGeneratePage() {
   const [loading, setLoading] = useState(false);
-  const [exercise, setExercise] = useState<any | null>(null);
+  const [exercise, setExercise] = useState<Exercise | null>(null);
   const router = useRouter();
 
   async function handleGenerate(e: React.FormEvent<HTMLFormElement>) {
@@ -34,7 +35,9 @@ export default function ExercisesGeneratePage() {
       });
       if (!res.ok) throw new Error("Failed to generate exercise");
       const data = await res.json();
-      setExercise(data.exercise_set);
+
+      // ✅ Normalize here so preview list and save are consistent
+      setExercise(normalizeExercise(data.exercise_set));
     } catch (err) {
       console.error(err);
       alert("Error generating exercise");
@@ -112,8 +115,8 @@ export default function ExercisesGeneratePage() {
             defaultValue="mcq"
           >
             <option value="mcq">Multiple Choice</option>
-            <option value="truefalse">True/False</option>
-            <option value="fillblank">Fill in the Blank</option>
+            <option value="true_false">True/False</option>
+            <option value="fill_blank">Fill in the Blank</option>
             <option value="match">Matching</option>
           </select>
           <p className="text-xs text-gray-500 mt-1">
@@ -173,23 +176,29 @@ export default function ExercisesGeneratePage() {
         <div className="bg-white p-6 rounded-xl shadow space-y-4">
           <h2 className="text-xl font-semibold">Preview Generated Set</h2>
           <p className="text-gray-500">
-            {exercise.title} • {exercise.format?.toUpperCase()} •{" "}
-            {exercise.meta?.difficulty}
+            {exercise.title} • {exercise.format.toUpperCase()} •{" "}
+            {exercise.difficulty}
           </p>
 
           <ul className="space-y-3">
-            {exercise.questions?.map((q: any, idx: number) => (
-              <li key={idx} className="rounded-lg border bg-gray-50 p-3">
-                <p className="font-medium">Q{idx + 1}. {q.prompt || q.q}</p>
-                {q.options && (
+            {exercise.questions?.map((q, idx) => (
+              <li key={q.id} className="rounded-lg border bg-gray-50 p-3">
+                <p className="font-medium">
+                  Q{idx + 1}. {q.prompt}
+                </p>
+                {q.options && q.options.length > 0 && (
                   <ul className="ml-4 list-disc text-sm text-gray-600">
-                    {q.options.map((o: string, i: number) => (
+                    {q.options.map((o, i) => (
                       <li key={i}>{o}</li>
                     ))}
                   </ul>
                 )}
                 <p className="text-sm text-green-700 mt-1">
-                  Answer: {String(q.correct_answer || q.answer)}
+                  Answer: {Array.isArray(q.correctAnswer)
+                    ? q.correctAnswer.join(", ")
+                    : typeof q.correctAnswer === "object"
+                    ? JSON.stringify(q.correctAnswer)
+                    : String(q.correctAnswer)}
                 </p>
               </li>
             ))}

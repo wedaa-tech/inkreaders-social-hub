@@ -1,52 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { Question, UserAnswer } from "@/app/exercises/[id]/preview/page";
+import { Question, UserAnswer } from "@/lib/normalizeExercise";
 
-import {
-  DndContext,
-  closestCenter,
-  PointerSensor,
-  useSensor,
-  useSensors,
-} from "@dnd-kit/core";
-import {
-  SortableContext,
-  useSortable,
-  arrayMove,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 
 type Props = {
   question: Question;
   userAnswer?: UserAnswer;
   onAnswer: (qid: string, value: any) => void;
-  onNext?: () => void;
+  onNext: () => void;
 };
-
-// ✅ Small draggable block
-function SortableItem({ id }: { id: string }) {
-  const { attributes, listeners, setNodeRef, transform, transition } =
-    useSortable({ id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      {...attributes}
-      {...listeners}
-      className="p-2 border rounded bg-white shadow cursor-grab"
-    >
-      {id}
-    </div>
-  );
-}
 
 export default function ExerciseQuestion({
   question,
@@ -54,139 +17,136 @@ export default function ExerciseQuestion({
   onAnswer,
   onNext,
 }: Props) {
-  const [ordering, setOrdering] = useState<string[]>(
-    question.type === "match" ? question.options || [] : []
-  );
-  const sensors = useSensors(useSensor(PointerSensor));
+  const [inputValue, setInputValue] = useState("");
 
-  // === Handlers ===
-  const handleSelect = (val: string) => {
-    onAnswer(question.id, val);
-    if (onNext) setTimeout(onNext, 500); // short delay for feedback
+  const handleMCQ = (option: string) => {
+    onAnswer(question.id, option);
+    onNext();
   };
 
-  const handleFillBlank = (val: string) => {
-    onAnswer(question.id, val);
+  const handleTrueFalse = (value: boolean) => {
+    onAnswer(question.id, String(value));
+    onNext();
   };
 
-  const handleFillBlankEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && onNext) {
+  const handleFillBlank = () => {
+    if (inputValue.trim()) {
+      onAnswer(question.id, inputValue.trim());
+      setInputValue("");
       onNext();
     }
   };
 
-  const handleMatchNext = () => {
-    onAnswer(question.id, ordering);
-    if (onNext) onNext();
+  const handleMatch = (key: string, value: string) => {
+    const current = (userAnswer?.value as Record<string, string>) || {};
+    const updated = { ...current, [key]: value };
+    onAnswer(question.id, updated);
   };
 
   return (
-    <div className="my-6">
-      <h2 className="font-semibold mb-3">{question.prompt}</h2>
+    <div className="bg-white p-6 rounded-xl shadow space-y-4">
+      <h2 className="text-lg font-semibold">{question.prompt}</h2>
 
-      {/* MCQ */}
-      {question.type === "mcq" && (
-        <div className="space-y-2">
-          {question.options?.map((opt) => (
-            <label
-              key={opt}
-              className={`flex items-center gap-2 p-2 border rounded cursor-pointer ${
-                userAnswer?.value === opt
-                  ? "bg-blue-100 border-blue-400"
-                  : "border-gray-300"
-              }`}
-            >
-              <input
-                type="radio"
-                name={`q-${question.id}`}
-                value={opt}
-                checked={userAnswer?.value === opt}
-                onChange={() => handleSelect(opt)}
-                className="cursor-pointer"
-              />
-              {opt}
-            </label>
+      {/* Multiple Choice */}
+      {question.type === "mcq" && question.options && (
+        <ul className="space-y-2">
+          {question.options.map((opt, idx) => (
+            <li key={idx}>
+              <button
+                className={`w-full text-left px-4 py-2 rounded-lg border ${
+                  userAnswer?.value === opt
+                    ? "bg-blue-600 text-white"
+                    : "bg-gray-50 hover:bg-gray-100"
+                }`}
+                onClick={() => handleMCQ(opt)}
+              >
+                {opt}
+              </button>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
 
       {/* True/False */}
-      {question.type === "truefalse" && (
+      {question.type === "true_false" && (
         <div className="flex gap-4">
-          {["True", "False"].map((opt) => (
-            <button
-              key={opt}
-              onClick={() => handleSelect(opt)}
-              className={`px-4 py-2 rounded border ${
-                userAnswer?.value === opt
-                  ? "bg-blue-500 text-white border-blue-600"
-                  : "bg-white border-gray-300"
-              }`}
-            >
-              {opt}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Fill-in-the-blank */}
-      {question.type === "fillblank" && (
-        <input
-          type="text"
-          placeholder="Type your answer... (press Enter to continue)"
-          value={(userAnswer?.value as string) ?? ""}
-          onChange={(e) => handleFillBlank(e.target.value)}
-          onKeyDown={handleFillBlankEnter}
-          className="border rounded px-3 py-2 w-full"
-        />
-      )}
-
-      {/* Matching/Ordering */}
-      {question.type === "match" && ordering.length > 0 && (
-        <div>
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragEnd={({ active, over }) => {
-              if (over && active.id !== over.id) {
-                setOrdering((items) => {
-                  const oldIndex = items.indexOf(active.id as string);
-                  const newIndex = items.indexOf(over.id as string);
-                  return arrayMove(items, oldIndex, newIndex);
-                });
-              }
-            }}
-          >
-            <SortableContext items={ordering} strategy={verticalListSortingStrategy}>
-              <div className="space-y-2">
-                {ordering.map((id) => (
-                  <SortableItem key={id} id={id} />
-                ))}
-              </div>
-            </SortableContext>
-          </DndContext>
           <button
-            onClick={handleMatchNext}
-            className="mt-4 px-4 py-2 bg-blue-500 text-white rounded"
+            className={`flex-1 px-4 py-2 rounded-lg border ${
+              userAnswer?.value === "true"
+                ? "bg-blue-600 text-white"
+                : "bg-gray-50 hover:bg-gray-100"
+            }`}
+            onClick={() => handleTrueFalse(true)}
           >
-            Next →
+            True
+          </button>
+          <button
+            className={`flex-1 px-4 py-2 rounded-lg border ${
+              userAnswer?.value === "false"
+                ? "bg-blue-600 text-white"
+                : "bg-gray-50 hover:bg-gray-100"
+            }`}
+            onClick={() => handleTrueFalse(false)}
+          >
+            False
           </button>
         </div>
       )}
 
-      {/* Feedback */}
-      {userAnswer?.checked && (
-        <div className="mt-3">
-          {userAnswer.isCorrect ? (
-            <p className="text-green-600 font-medium">✅ Correct!</p>
-          ) : (
-            <p className="text-red-600 font-medium">❌ Incorrect</p>
-          )}
-          {question.explanation && (
-            <p className="text-sm text-gray-600 mt-1">{question.explanation}</p>
-          )}
+      {/* Fill in the Blank */}
+      {question.type === "fill_blank" && (
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            placeholder="Type your answer..."
+            className="flex-1 px-3 py-2 rounded-lg border"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleFillBlank();
+            }}
+          />
+          <button
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg"
+            onClick={handleFillBlank}
+          >
+            Submit
+          </button>
         </div>
       )}
+
+      {/* Matching */}
+      {question.type === "match" &&
+        typeof question.correctAnswer === "object" && (
+          <div className="space-y-3">
+            {Object.keys(question.correctAnswer).map((key) => (
+              <div key={key} className="flex items-center gap-2">
+                <span className="font-medium">{key}</span>
+                <select
+                  className="flex-1 px-3 py-2 rounded-lg border"
+                  value={
+                    (userAnswer?.value as Record<string, string>)?.[key] || ""
+                  }
+                  onChange={(e) => handleMatch(key, e.target.value)}
+                >
+                  <option value="">Select</option>
+                  {Array.isArray(question.options) &&
+                    question.options.map((opt, idx) => (
+                      <option key={idx} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            ))}
+            <button
+              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg"
+              onClick={onNext}
+            >
+              Next →
+            </button>
+          </div>
+        )}
     </div>
   );
 }

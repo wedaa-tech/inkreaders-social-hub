@@ -56,6 +56,11 @@ func (h *Handlers) ExercisesGenerate(w http.ResponseWriter, r *http.Request, s *
 		req.Language = "en"
 	}
 
+	// Normalize requested format(s) before AI call
+	for i, f := range req.Formats {
+		req.Formats[i] = normalizeFormat(f)
+	}
+
 	// AI call
 	out, err := h.AI.Generate(r.Context(), ai.GenerateParams{
 		Title:      req.Title,
@@ -101,7 +106,8 @@ func (h *Handlers) ExercisesGenerate(w http.ResponseWriter, r *http.Request, s *
 		ID:     uuid.New().String(),
 		UserID: userID,
 		Title:  coalesce(req.Title, out.InferredTitle),
-		Format: out.InferredFormat,
+		// ✅ Normalize AI output format before saving
+		Format: normalizeFormat(out.InferredFormat),
 		Questions: out.Questions,
 		Meta: db.ExerciseMeta{
 			Difficulty: req.Difficulty,
@@ -119,11 +125,13 @@ func (h *Handlers) ExercisesGenerate(w http.ResponseWriter, r *http.Request, s *
 	WriteJSON(w, http.StatusOK, map[string]any{"exercise_set": set})
 }
 
+
 // === Save Exercises ===
 func (h *Handlers) ExercisesSave(w http.ResponseWriter, r *http.Request, s *SessionData) {
 	var req ExercisesSaveReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		BadRequest(w, "invalid_json")
+		log.Printf("invalid_json: %+v", err)
 		return
 	}
 
@@ -136,6 +144,7 @@ func (h *Handlers) ExercisesSave(w http.ResponseWriter, r *http.Request, s *Sess
 
 	if err := h.DB.InsertExerciseSet(r.Context(), &req.ExerciseSet); err != nil {
 		ServerError(w, err)
+		log.Printf("ExercisesSave error: %+v", err)
 		return
 	}
 
@@ -324,4 +333,21 @@ func generateStorageKey(userID, name string) string {
 	ext := filepath.Ext(name)
 	return "uploads/" + userID + "/" + ts + ext
 }
+
+// normalizeFormat maps loose values to canonical DB format values.
+func normalizeFormat(f string) string {
+	switch f {
+	case "mcq", "MCQ":
+		return "mcq"
+	case "truefalse", "true_false", "trueFalse":
+		return "true_false"
+	case "fillblank", "fill_blank", "fillBlank":
+		return "fill_blank"
+	case "match", "matching":
+		return "match"
+	default:
+		return "mcq" // fallback
+	}
+}
+
 
