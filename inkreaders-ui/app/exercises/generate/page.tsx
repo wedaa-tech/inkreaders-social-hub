@@ -1,4 +1,3 @@
-// app/exercises/generate/page.tsx
 "use client";
 
 import { useState } from "react";
@@ -18,7 +17,7 @@ export default function ExercisesGeneratePage() {
     const body = {
       title: form.get("title")?.toString() || "",
       topic: form.get("topic")?.toString() || "",
-      formats: [form.get("format")?.toString() || "mcq"],
+      formats: [form.get("format")?.toString() || "mcq"], // ✅ exactly one format
       count: Number(form.get("count") || 5),
       difficulty: form.get("difficulty")?.toString() || "mixed",
       language: form.get("language")?.toString() || "en",
@@ -33,26 +32,45 @@ export default function ExercisesGeneratePage() {
         credentials: "include",
         body: JSON.stringify(body),
       });
-      if (res.ok) {
-        const data = await res.json();
-        setExercise(data.exercise_set);
-      } else {
-        alert("Error generating exercise");
-      }
+      if (!res.ok) throw new Error("Failed to generate exercise");
+      const data = await res.json();
+      setExercise(data.exercise_set);
+    } catch (err) {
+      console.error(err);
+      alert("Error generating exercise");
     } finally {
       setLoading(false);
     }
   }
 
-  function handlePreview() {
+  async function handleSaveAndPreview() {
     if (!exercise) return;
-    // ✅ Save full JSON to sessionStorage
-    sessionStorage.setItem("previewExercise", JSON.stringify(exercise));
-    router.push("/exercises/preview");
+
+    try {
+      const res = await fetch(`${API_BASE}/api/exercises/save`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          exercise_set: exercise,
+          visibility: "private",
+        }),
+      });
+
+      if (!res.ok) throw new Error("Failed to save exercise");
+      const data = await res.json();
+      const newId = data.id;
+
+      router.push(`/exercises/${newId}/preview`);
+    } catch (err) {
+      console.error(err);
+      alert("Could not save exercise");
+    }
   }
 
   return (
     <div className="max-w-3xl mx-auto p-6 space-y-6">
+      {/* Header */}
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold">Generate Exercise</h1>
         <a href="/" className="text-blue-600 hover:underline">
@@ -60,7 +78,11 @@ export default function ExercisesGeneratePage() {
         </a>
       </div>
 
-      <form onSubmit={handleGenerate} className="space-y-4 bg-white p-6 rounded-xl shadow">
+      {/* Form */}
+      <form
+        onSubmit={handleGenerate}
+        className="space-y-4 bg-white p-6 rounded-xl shadow"
+      >
         <div>
           <label className="block text-sm font-medium">Title</label>
           <input
@@ -90,11 +112,13 @@ export default function ExercisesGeneratePage() {
             defaultValue="mcq"
           >
             <option value="mcq">Multiple Choice</option>
-            <option value="true_false" disabled>True/False (coming soon)</option>
-            <option value="fill_blank" disabled>Fill in the Blank (coming soon)</option>
-            <option value="matching" disabled>Matching (coming soon)</option>
-            <option value="essay" disabled>Essay (coming soon)</option>
+            <option value="truefalse">True/False</option>
+            <option value="fillblank">Fill in the Blank</option>
+            <option value="match">Matching</option>
           </select>
+          <p className="text-xs text-gray-500 mt-1">
+            Only one format can be selected per exercise set.
+          </p>
         </div>
 
         <div>
@@ -132,7 +156,6 @@ export default function ExercisesGeneratePage() {
           >
             <option value="en">English</option>
             <option value="hi">Hindi</option>
-            <option value="es" disabled>Spanish (coming soon)</option>
           </select>
         </div>
 
@@ -145,17 +168,19 @@ export default function ExercisesGeneratePage() {
         </button>
       </form>
 
+      {/* Preview */}
       {exercise && (
         <div className="bg-white p-6 rounded-xl shadow space-y-4">
           <h2 className="text-xl font-semibold">Preview Generated Set</h2>
           <p className="text-gray-500">
-            {exercise.title} • {exercise.format.toUpperCase()} • {exercise.meta?.difficulty}
+            {exercise.title} • {exercise.format?.toUpperCase()} •{" "}
+            {exercise.meta?.difficulty}
           </p>
 
           <ul className="space-y-3">
             {exercise.questions?.map((q: any, idx: number) => (
               <li key={idx} className="rounded-lg border bg-gray-50 p-3">
-                <p className="font-medium">Q{idx + 1}. {q.q}</p>
+                <p className="font-medium">Q{idx + 1}. {q.prompt || q.q}</p>
                 {q.options && (
                   <ul className="ml-4 list-disc text-sm text-gray-600">
                     {q.options.map((o: string, i: number) => (
@@ -164,17 +189,17 @@ export default function ExercisesGeneratePage() {
                   </ul>
                 )}
                 <p className="text-sm text-green-700 mt-1">
-                  Answer: {String(q.answer)}
+                  Answer: {String(q.correct_answer || q.answer)}
                 </p>
               </li>
             ))}
           </ul>
 
           <button
-            onClick={handlePreview}
+            onClick={handleSaveAndPreview}
             className="rounded-lg bg-blue-600 px-4 py-2 text-white font-medium hover:opacity-90"
           >
-            Continue to Preview →
+            Save & Continue →
           </button>
         </div>
       )}

@@ -1,159 +1,167 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
+import { useState, useEffect } from "react";
+import { useParams } from "next/navigation";
+import ExerciseQuestion from "@/components/ExerciseQuestion";
+import ProgressBar from "@/components/ProgressBar";
+import QuestionNavigator from "@/components/QuestionNavigator";
+import ExerciseResults from "@/components/ExerciseResults";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
+export type Exercise = {
+  id: string;
+  title: string;
+  difficulty: "easy" | "medium" | "hard" | "mixed";
+  questions: Question[];
+  createdAt: string;
+  author?: string;
+};
 
-export default function PreviewExercise() {
-  const router = useRouter();
-  const [exercise, setExercise] = useState<any | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [publishing, setPublishing] = useState(false);
-  const [exerciseId, setExerciseId] = useState<string | null>(null);
-  const [feedUri, setFeedUri] = useState<string | null>(null);
+export type Question = {
+  id: string;
+  type: "mcq" | "truefalse" | "fillblank" | "match";
+  prompt: string;
+  options?: string[];
+  correctAnswer: string | string[] | Record<string, string>;
+  explanation?: string;
+};
+
+export type UserAnswer = {
+  value: string | string[] | Record<string, string>;
+  isCorrect: boolean;
+  checked: boolean;
+};
+
+export type PracticeState = {
+  currentIndex: number;
+  answers: Record<string, UserAnswer>;
+  completed: boolean;
+  score: number;
+};
+
+export default function ExercisePreviewPage() {
+  const params = useParams();
+  const exerciseId = params?.id as string;
+
+  const [exercise, setExercise] = useState<Exercise | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [practice, setPractice] = useState<PracticeState>({
+    currentIndex: 0,
+    answers: {},
+    completed: false,
+    score: 0,
+  });
 
   useEffect(() => {
-    const raw = sessionStorage.getItem("previewExercise");
-    if (raw) {
-      setExercise(JSON.parse(raw));
-    }
-  }, []);
+    const fetchExercise = async () => {
+      try {
+        setLoading(true);
+        const res = await fetch(`/api/exercises/${exerciseId}`);
+        if (!res.ok) throw new Error("Failed to load exercise");
 
-  async function handleSave() {
-    if (!exercise) return;
-    setSaving(true);
-    try {
-      const res = await fetch(`${API_BASE}/api/exercises/save`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          exercise_set: exercise,
-          visibility: "private",
-        }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
-      setExerciseId(data.id);
-      alert("Saved successfully!");
-    } catch (err) {
-      alert("Save failed: " + err);
-    } finally {
-      setSaving(false);
-    }
-  }
+        const data = await res.json();
+        const set = data.exercise_set;
 
-  async function handlePublish() {
-    if (!exerciseId) return alert("Save first before publishing!");
-    setPublishing(true);
-    try {
-      const res = await fetch(
-        `${API_BASE}/api/exercises/${exerciseId}/publish`,
-        {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ to_feed: true, allow_remix: true }),
-        }
-      );
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
-      setFeedUri(data.feed_uri || null);
-      alert("Published!");
-    } catch (err) {
-      alert("Publish failed: " + err);
-    } finally {
-      setPublishing(false);
-    }
-  }
+        // Map backend shape → frontend shape
+        const ex: Exercise = {
+          id: set.id,
+          title: set.title,
+          difficulty: set.meta?.difficulty || "mixed",
+          createdAt: set.created_at,
+          author: set.user_id,
+          questions: (set.questions || []).map((q: any, idx: number) => ({
+            id: q.id || `q${idx + 1}`,
+            type: q.type,
+            prompt: q.prompt,
+            options: q.options,
+            correctAnswer: q.correct_answer,
+            explanation: q.explanation,
+          })),
+        };
 
-  function blueskyUrl(uri: string) {
-    const parts = uri.split("/");
-    if (parts.length >= 5) {
-      const did = parts[2];
-      const rkey = parts[4];
-      return `https://bsky.app/profile/${did}/post/${rkey}`;
-    }
-    return "#";
-  }
+        setExercise(ex);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  if (!exercise) {
-    return <p className="p-6 text-gray-500">No exercise to preview.</p>;
-  }
+    if (exerciseId) fetchExercise();
+  }, [exerciseId]);
+
+  if (loading) return <div className="p-6">Loading exercise...</div>;
+  if (!exercise) return <div className="p-6">Exercise not found.</div>;
+
+  const currentQuestion = exercise.questions[practice.currentIndex];
+
+  const finishExercise = () => {
+    const correctCount = Object.values(practice.answers).filter(
+      (a) => a.isCorrect
+    ).length;
+    setPractice((prev) => ({
+      ...prev,
+      completed: true,
+      score: correctCount,
+    }));
+  };
 
   return (
-    <div className="max-w-3xl mx-auto p-6 space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Preview Exercise</h1>
-        <Link href="/" className="text-blue-600 hover:underline">
-          ← Back to Home
-        </Link>
-      </div>
+    <div className="p-6 max-w-2xl mx-auto">
+      <h1 className="text-2xl font-bold mb-4">{exercise.title}</h1>
+      <p className="text-sm text-gray-600 mb-4">
+        Difficulty: {exercise.difficulty}
+      </p>
 
-      <div className="bg-white rounded-xl p-6 shadow space-y-4">
-        <h2 className="text-xl font-semibold">{exercise.title}</h2>
-        <p className="text-gray-600">
-          Format: {exercise.format} • {exercise.questions?.length || 0} questions
-        </p>
+      <ProgressBar
+        completed={Object.keys(practice.answers).length}
+        total={exercise.questions.length}
+      />
 
-        <ul className="space-y-3">
-          {exercise.questions?.map((q: any, idx: number) => (
-            <li key={idx} className="rounded-lg border bg-gray-50 p-3">
-              <p className="font-medium">
-                Q{idx + 1}. {q.q}
-              </p>
-              {q.options && (
-                <ul className="ml-4 list-disc text-sm text-gray-600">
-                  {q.options.map((o: string, i: number) => (
-                    <li key={i}>{o}</li>
-                  ))}
-                </ul>
-              )}
-              <p className="text-sm text-green-700 mt-1">
-                Answer: {String(q.answer)}
-              </p>
-            </li>
-          ))}
-        </ul>
+      {!practice.completed ? (
+        <>
+          <ExerciseQuestion
+            question={currentQuestion}
+            userAnswer={practice.answers[currentQuestion.id]}
+            onAnswer={(qid, ans) =>
+              setPractice((prev) => ({
+                ...prev,
+                answers: { ...prev.answers, [qid]: ans },
+              }))
+            }
+            onNext={() => {
+              if (practice.currentIndex < exercise.questions.length - 1) {
+                setPractice((prev) => ({
+                  ...prev,
+                  currentIndex: prev.currentIndex + 1,
+                }));
+              }
+            }}
+          />
 
-        <div className="flex gap-3">
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="rounded-lg bg-blue-600 text-white px-4 py-2 hover:bg-blue-700 disabled:opacity-50"
-          >
-            {saving ? "Saving..." : "Save"}
-          </button>
-
-          {!feedUri ? (
-            <button
-              onClick={handlePublish}
-              disabled={publishing}
-              className="rounded-lg bg-green-600 text-white px-4 py-2 hover:bg-green-700 disabled:opacity-50"
-            >
-              {publishing ? "Publishing..." : "Publish"}
-            </button>
-          ) : (
-            <a
-              href={blueskyUrl(feedUri)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="rounded-lg bg-green-600 text-white px-4 py-2 hover:bg-green-700"
-            >
-              View on Bluesky ↗
-            </a>
-          )}
-
-          <Link
-            href="/exercises"
-            className="rounded-lg border px-4 py-2 hover:bg-gray-50"
-          >
-            Cancel
-          </Link>
-        </div>
-      </div>
+          <QuestionNavigator
+            total={exercise.questions.length}
+            currentIndex={practice.currentIndex}
+            onNavigate={(i) =>
+              setPractice((prev) => ({ ...prev, currentIndex: i }))
+            }
+            onFinish={finishExercise}
+          />
+        </>
+      ) : (
+        <ExerciseResults
+          exercise={exercise}
+          answers={practice.answers}
+          score={practice.score}
+          onRetry={() =>
+            setPractice({
+              currentIndex: 0,
+              answers: {},
+              completed: false,
+              score: 0,
+            })
+          }
+        />
+      )}
     </div>
   );
 }

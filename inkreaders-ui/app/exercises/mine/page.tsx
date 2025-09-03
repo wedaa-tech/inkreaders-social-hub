@@ -72,12 +72,24 @@ export default function ExercisesMinePage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ harder: false, reduce_to: 0, transform: "" }),
+        body: JSON.stringify({
+          transform: {
+            increase_difficulty: true,
+            reduce_count_to: 0,
+            switch_format_to: "",
+          },
+          note: "User requested remix from Mine page",
+        }),
       });
+
       if (res.ok) {
         const data = await res.json();
-        alert("Remixed!");
-        router.push(`/exercises/${data.id}/preview`);
+        const newId = data.derived_set_id;
+        if (newId) {
+          router.push(`/exercises/${newId}/preview`);
+        } else {
+          alert("Remix failed: no ID returned");
+        }
       } else {
         alert("Remix failed");
       }

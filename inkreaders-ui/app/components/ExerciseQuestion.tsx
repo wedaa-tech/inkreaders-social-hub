@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Question, UserAnswer } from "@/app/exercises/[id]/preview/page";
 
 import {
@@ -21,11 +21,11 @@ import { CSS } from "@dnd-kit/utilities";
 type Props = {
   question: Question;
   userAnswer?: UserAnswer;
-  onAnswer: (qid: string, ans: UserAnswer) => void;
+  onAnswer: (qid: string, value: any) => void;
   onNext?: () => void;
 };
 
-// Small draggable block
+// ✅ Small draggable block
 function SortableItem({ id }: { id: string }) {
   const { attributes, listeners, setNodeRef, transform, transition } =
     useSortable({ id });
@@ -41,7 +41,7 @@ function SortableItem({ id }: { id: string }) {
       style={style}
       {...attributes}
       {...listeners}
-      className="p-2 border rounded bg-gray-100 shadow cursor-grab"
+      className="p-2 border rounded bg-white shadow cursor-grab"
     >
       {id}
     </div>
@@ -54,48 +54,30 @@ export default function ExerciseQuestion({
   onAnswer,
   onNext,
 }: Props) {
-  const [selected, setSelected] = useState<string | null>(
-    (userAnswer?.value as string) || null
+  const [ordering, setOrdering] = useState<string[]>(
+    question.type === "match" ? question.options || [] : []
   );
-
-  const [ordering, setOrdering] = useState<string[]>([]);
-
-  // ✅ Ensure ordering initializes correctly when question loads
-  useEffect(() => {
-    if (question.type === "match" && question.options) {
-      setOrdering(question.options);
-    }
-  }, [question]);
-
   const sensors = useSensors(useSensor(PointerSensor));
 
-  const handleSubmit = () => {
-    let isCorrect = false;
-    let answerValue: any = selected;
+  // === Handlers ===
+  const handleSelect = (val: string) => {
+    onAnswer(question.id, val);
+    if (onNext) setTimeout(onNext, 500); // short delay for feedback
+  };
 
-    if (question.type === "fillblank" && typeof question.correctAnswer === "string") {
-      isCorrect =
-        (selected ?? "").trim().toLowerCase() ===
-        question.correctAnswer.trim().toLowerCase();
-    } else if (question.type === "mcq" || question.type === "truefalse") {
-      isCorrect = selected === question.correctAnswer;
-    } else if (question.type === "match") {
-      answerValue = ordering;
-      const expected = question.correctAnswer as string[];
-      isCorrect = JSON.stringify(ordering) === JSON.stringify(expected);
+  const handleFillBlank = (val: string) => {
+    onAnswer(question.id, val);
+  };
+
+  const handleFillBlankEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && onNext) {
+      onNext();
     }
+  };
 
-    onAnswer(question.id, {
-      value: answerValue,
-      isCorrect,
-      checked: true,
-    });
-
-    if (onNext) {
-      setTimeout(() => {
-        onNext();
-      }, 800);
-    }
+  const handleMatchNext = () => {
+    onAnswer(question.id, ordering);
+    if (onNext) onNext();
   };
 
   return (
@@ -109,15 +91,17 @@ export default function ExerciseQuestion({
             <label
               key={opt}
               className={`flex items-center gap-2 p-2 border rounded cursor-pointer ${
-                selected === opt ? "bg-blue-100 border-blue-400" : "border-gray-300"
+                userAnswer?.value === opt
+                  ? "bg-blue-100 border-blue-400"
+                  : "border-gray-300"
               }`}
             >
               <input
                 type="radio"
                 name={`q-${question.id}`}
                 value={opt}
-                checked={selected === opt}
-                onChange={() => setSelected(opt)}
+                checked={userAnswer?.value === opt}
+                onChange={() => handleSelect(opt)}
                 className="cursor-pointer"
               />
               {opt}
@@ -132,9 +116,9 @@ export default function ExerciseQuestion({
           {["True", "False"].map((opt) => (
             <button
               key={opt}
-              onClick={() => setSelected(opt)}
+              onClick={() => handleSelect(opt)}
               className={`px-4 py-2 rounded border ${
-                selected === opt
+                userAnswer?.value === opt
                   ? "bg-blue-500 text-white border-blue-600"
                   : "bg-white border-gray-300"
               }`}
@@ -149,50 +133,48 @@ export default function ExerciseQuestion({
       {question.type === "fillblank" && (
         <input
           type="text"
-          placeholder="Type your answer..."
-          value={selected ?? ""}
-          onChange={(e) => setSelected(e.target.value)}
+          placeholder="Type your answer... (press Enter to continue)"
+          value={(userAnswer?.value as string) ?? ""}
+          onChange={(e) => handleFillBlank(e.target.value)}
+          onKeyDown={handleFillBlankEnter}
           className="border rounded px-3 py-2 w-full"
         />
       )}
 
       {/* Matching/Ordering */}
       {question.type === "match" && ordering.length > 0 && (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={({ active, over }) => {
-            if (over && active.id !== over.id) {
-              setOrdering((items) => {
-                const oldIndex = items.indexOf(active.id as string);
-                const newIndex = items.indexOf(over.id as string);
-                return arrayMove(items, oldIndex, newIndex);
-              });
-            }
-          }}
-        >
-          <SortableContext items={ordering} strategy={verticalListSortingStrategy}>
-            <div className="space-y-2">
-              {ordering.map((id) => (
-                <SortableItem key={id} id={id} />
-              ))}
-            </div>
-          </SortableContext>
-        </DndContext>
+        <div>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={({ active, over }) => {
+              if (over && active.id !== over.id) {
+                setOrdering((items) => {
+                  const oldIndex = items.indexOf(active.id as string);
+                  const newIndex = items.indexOf(over.id as string);
+                  return arrayMove(items, oldIndex, newIndex);
+                });
+              }
+            }}
+          >
+            <SortableContext items={ordering} strategy={verticalListSortingStrategy}>
+              <div className="space-y-2">
+                {ordering.map((id) => (
+                  <SortableItem key={id} id={id} />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+          <button
+            onClick={handleMatchNext}
+            className="mt-4 px-4 py-2 bg-blue-500 text-white rounded"
+          >
+            Next →
+          </button>
+        </div>
       )}
 
-      <button
-        onClick={handleSubmit}
-        disabled={
-          question.type === "match"
-            ? ordering.length === 0
-            : !selected
-        }
-        className="mt-4 px-4 py-2 bg-blue-500 text-white rounded disabled:opacity-50"
-      >
-        Submit
-      </button>
-
+      {/* Feedback */}
       {userAnswer?.checked && (
         <div className="mt-3">
           {userAnswer.isCorrect ? (
