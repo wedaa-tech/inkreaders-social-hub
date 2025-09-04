@@ -6,7 +6,12 @@ import ExerciseQuestion from "@/components/ExerciseQuestion";
 import ProgressBar from "@/components/ProgressBar";
 import QuestionNavigator from "@/components/QuestionNavigator";
 import ExerciseResults from "@/components/ExerciseResults";
-import { normalizeExercise, Exercise, UserAnswer, PracticeState } from "@/lib/normalizeExercise";
+import {
+  normalizeExercise,
+  Exercise,
+  UserAnswer,
+  PracticeState,
+} from "@/lib/normalizeExercise";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
 
@@ -14,6 +19,10 @@ export default function ExercisePreviewPage() {
   const params = useParams();
   const router = useRouter();
   const exerciseId = params?.id as string;
+
+  console.log("🔎 useParams():", params);
+  console.log("🔎 exerciseId:", exerciseId);
+  console.log("🔎 API_BASE:", API_BASE);
 
   const [exercise, setExercise] = useState<Exercise | null>(null);
   const [loading, setLoading] = useState(true);
@@ -26,32 +35,50 @@ export default function ExercisePreviewPage() {
 
   useEffect(() => {
     async function fetchExercise() {
+      console.log("📡 Fetching:", `${API_BASE}/api/exercises/${exerciseId}`);
       try {
         setLoading(true);
         const res = await fetch(`${API_BASE}/api/exercises/${exerciseId}`, {
           credentials: "include",
         });
-        if (!res.ok) throw new Error("Failed to load exercise");
+
+        console.log("📡 Response status:", res.status);
+
+        if (!res.ok) {
+          const errText = await res.text();
+          console.error("❌ Fetch failed:", res.status, errText);
+          throw new Error("Failed to load exercise");
+        }
 
         const data = await res.json();
-        const set = data.exercise_set;
+        console.log("📦 Raw API response:", data);
 
-        // ✅ Always normalize so correctAnswer is never undefined
-        setExercise(normalizeExercise(set));
+        const set = data.exercise_set;
+        console.log("📝 Raw questions:", set?.questions);
+
+        const normalized = normalizeExercise(set);
+        console.log("✅ Normalized exercise:", normalized);
+
+        setExercise(normalized);
       } catch (err) {
-        console.error(err);
+        console.error("🔥 fetchExercise error:", err);
       } finally {
         setLoading(false);
       }
     }
 
-    if (exerciseId) fetchExercise();
+    if (exerciseId) {
+      fetchExercise();
+    } else {
+      console.warn("⚠️ No exerciseId, skipping fetch.");
+    }
   }, [exerciseId]);
 
   if (loading) return <div className="p-6">Loading exercise...</div>;
   if (!exercise) return <div className="p-6">Exercise not found.</div>;
 
   const currentQuestion = exercise.questions[practice.currentIndex];
+  console.log("➡️ Current question:", currentQuestion);
 
   const checkAnswer = (qid: string, value: any) => {
     const q = exercise.questions.find((qq) => qq.id === qid);
@@ -68,6 +95,8 @@ export default function ExercisePreviewPage() {
     } else if (typeof q.correctAnswer === "object") {
       isCorrect = JSON.stringify(value) === JSON.stringify(q.correctAnswer);
     }
+
+    console.log("📝 checkAnswer:", { qid, value, correct: q.correctAnswer, isCorrect });
 
     setPractice((prev) => ({
       ...prev,
