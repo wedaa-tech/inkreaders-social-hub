@@ -65,7 +65,7 @@ func (p *AtprotoPublisher) PublishExerciseSet(
 
 	feedText := fmt.Sprintf("📘 New Exercise: %s", set.Title)
 	if len(set.Questions) > 0 {
-		firstQ := set.Questions[0].Q
+		firstQ := set.Questions[0].Prompt
 		if len(firstQ) > 80 {
 			firstQ = firstQ[:77] + "..."
 		}

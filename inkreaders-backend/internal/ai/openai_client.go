@@ -1,28 +1,29 @@
 package ai
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
-	"io" 
-	"github.com/wedaa-tech/inkreaders-social-hub/inkreaders-backend/internal/db"
+	"io"
 	"net/http"
-	"bytes"
+	"strings"
+
+	"github.com/wedaa-tech/inkreaders-social-hub/inkreaders-backend/internal/db"
 )
 
 type OpenAIClient struct {
-	Model string
+	Model  string
 	APIKey string
-	HTTP *http.Client
+	HTTP   *http.Client
 }
 
 func NewOpenAI(model string, apiKey string) *OpenAIClient {
 	return &OpenAIClient{
-		Model: model,
+		Model:  model,
 		APIKey: apiKey,
-		HTTP: http.DefaultClient,
+		HTTP:   http.DefaultClient,
 	}
 }
 
@@ -43,30 +44,41 @@ func (c *OpenAIClient) Generate(ctx context.Context, p GenerateParams) (Generate
 	userPrompt := builderPrompt(p)
 
 	raw, err := c.chat(ctx, sysPrompt, userPrompt)
-	if err != nil { return GenerateOut{}, err }
+	if err != nil {
+		return GenerateOut{}, err
+	}
 	fmt.Printf("[AI raw output] %s\n", string(raw))
 
-	// 1) Parse JSON
-	var items []db.Question
-	if err := json.Unmarshal(raw, &items); err != nil {
-		// Sometimes models add stray characters; try to trim to first/last bracket.
+	// 1) Parse into a wire shape (what the model returns)
+	var wire []wireQuestion
+	if err := json.Unmarshal(raw, &wire); err != nil {
 		trim := trimToJSONArray(string(raw))
-		if trim == "" || json.Unmarshal([]byte(trim), &items) != nil {
+		if trim == "" || json.Unmarshal([]byte(trim), &wire) != nil {
 			return GenerateOut{}, fmt.Errorf("invalid JSON from model: %w", err)
 		}
 	}
 
-	// 2) Server-side validation
-	if err := validateQuestions(items, p.Formats); err != nil {
+	// 2) Validate the wire questions (types, prompts, answers)
+	if err := validateWireQuestions(wire, p.Formats); err != nil {
 		return GenerateOut{}, err
 	}
 
-	// Infer title/format for convenience
-	infTitle := p.Title
-	if infTitle == "" {
-		if p.Topic != "" { infTitle = fmt.Sprintf("%s (%d)", p.Topic, len(items)) } else { infTitle = "Exercise Set" }
+	// 3) Map to db.Question (your schema)
+	items := make([]db.Question, 0, len(wire))
+	for i, wq := range wire {
+		items = append(items, toDBQuestion(wq, i))
 	}
-	infFormat := inferFormat(items)
+
+	// 4) Infer title/format
+	infTitle := p.Title
+	if strings.TrimSpace(infTitle) == "" {
+		if p.Topic != "" {
+			infTitle = fmt.Sprintf("%s (%d)", p.Topic, len(items))
+		} else {
+			infTitle = "Exercise Set"
+		}
+	}
+	infFormat := inferWireFormat(wire)
 
 	return GenerateOut{
 		InferredTitle:  infTitle,
@@ -76,10 +88,10 @@ func (c *OpenAIClient) Generate(ctx context.Context, p GenerateParams) (Generate
 }
 
 func (c *OpenAIClient) Remix(ctx context.Context, p RemixParams) (db.ExerciseSet, error) {
-	// Simple remix: ask to transform difficulty/format/count using parent questions as context
+	// Provide parent questions to the model
 	parentJSON, _ := json.Marshal(p.Parent.Questions)
 	userPrompt := fmt.Sprintf(
-`Remix the following questions with transforms:
+		`Remix the following questions with transforms:
 - Harder: %v
 - Reduce to: %d (0 = keep)
 - Switch format to: %s (empty = keep)
@@ -88,22 +100,30 @@ Parent questions:
 %s`, p.Harder, p.ReduceTo, p.Transform, string(parentJSON))
 
 	raw, err := c.chat(ctx, sysPrompt, userPrompt)
-	if err != nil { return db.ExerciseSet{}, err }
+	if err != nil {
+		return db.ExerciseSet{}, err
+	}
 	fmt.Printf("[AI raw output] %s\n", string(raw))
-		
-	var items []db.Question
-	if err := json.Unmarshal(raw, &items); err != nil {
+
+	var wire []wireQuestion
+	if err := json.Unmarshal(raw, &wire); err != nil {
 		trim := trimToJSONArray(string(raw))
-		if trim == "" || json.Unmarshal([]byte(trim), &items) != nil {
+		if trim == "" || json.Unmarshal([]byte(trim), &wire) != nil {
 			return db.ExerciseSet{}, fmt.Errorf("invalid JSON from model: %w", err)
 		}
 	}
-	if err := validateQuestions(items, nil); err != nil {
+	if err := validateWireQuestions(wire, nil); err != nil {
 		return db.ExerciseSet{}, err
 	}
+
+	items := make([]db.Question, 0, len(wire))
+	for i, wq := range wire {
+		items = append(items, toDBQuestion(wq, i))
+	}
+
 	return db.ExerciseSet{
 		Title:     p.Parent.Title + " (Remix)",
-		Format:    inferFormat(items),
+		Format:    inferWireFormat(wire),
 		Questions: items,
 		Meta: db.ExerciseMeta{
 			Difficulty: p.Parent.Meta.Difficulty,
@@ -129,13 +149,14 @@ func builderPrompt(p GenerateParams) string {
 	return sb.String()
 }
 
-// Minimal OpenAI Chat call with JSON response handling
+// ---------------- Chat ----------------
+
 func (c *OpenAIClient) chat(ctx context.Context, system string, user string) ([]byte, error) {
 	body := map[string]any{
 		"model": c.Model,
 		"messages": []map[string]string{
-			{"role":"system", "content": system},
-			{"role":"user",   "content": user},
+			{"role": "system", "content": system},
+			{"role": "user", "content": user},
 		},
 		"temperature": 0.2,
 	}
@@ -146,65 +167,145 @@ func (c *OpenAIClient) chat(ctx context.Context, system string, user string) ([]
 	req.Header.Set("Content-Type", "application/json")
 
 	res, err := c.HTTP.Do(req)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer res.Body.Close()
 	if res.StatusCode >= 300 {
 		all, _ := io.ReadAll(res.Body)
 		return nil, fmt.Errorf("openai error %d: %s", res.StatusCode, string(all))
 	}
 	var out struct {
-		Choices []struct{
-			Message struct{
+		Choices []struct {
+			Message struct {
 				Content string `json:"content"`
 			} `json:"message"`
 		} `json:"choices"`
 	}
-	if err := json.NewDecoder(res.Body).Decode(&out); err != nil { return nil, err }
-	if len(out.Choices) == 0 { return nil, errors.New("no choices") }
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	if len(out.Choices) == 0 {
+		return nil, errors.New("no choices")
+	}
 	return []byte(out.Choices[0].Message.Content), nil
 }
 
-// ---- Helpers ----
+// --------------- Wire <-> DB mapping ---------------
 
-func trimToJSONArray(s string) string {
-	start := strings.Index(s, "[")
-	end := strings.LastIndex(s, "]")
-	if start == -1 || end == -1 || end <= start { return "" }
-	return s[start : end+1]
+type wireQuestion struct {
+	Type         string      `json:"type"`
+	Q            string      `json:"q"`
+	Prompt       string      `json:"prompt"`
+	Question     string      `json:"question"`
+	Text         string      `json:"text"`
+	Statement    string      `json:"statement"`
+	Options      []string    `json:"options"`
+	Choices      []string    `json:"choices"`
+	Answer       any         `json:"answer"`
+	CorrectAns   any         `json:"correct_answer"`
+	Explain      string      `json:"explain"`
+	Explanation  string      `json:"explanation"`
 }
 
-func validateQuestions(items []db.Question, allowedFormats []string) error {
-	// basic invariants
+func (w wireQuestion) normPrompt() string {
+	if s := strings.TrimSpace(w.Prompt); s != "" {
+		return s
+	}
+	if s := strings.TrimSpace(w.Q); s != "" {
+		return s
+	}
+	if s := strings.TrimSpace(w.Question); s != "" {
+		return s
+	}
+	if s := strings.TrimSpace(w.Text); s != "" {
+		return s
+	}
+	if s := strings.TrimSpace(w.Statement); s != "" {
+		return s
+	}
+	return ""
+}
+
+func (w wireQuestion) normOptions() []string {
+	if len(w.Options) > 0 {
+		return w.Options
+	}
+	if len(w.Choices) > 0 {
+		return w.Choices
+	}
+	return nil
+}
+
+func (w wireQuestion) normAnswer() any {
+	if w.CorrectAns != nil {
+		return w.CorrectAns
+	}
+	return w.Answer
+}
+
+func (w wireQuestion) normExplanation() string {
+	if s := strings.TrimSpace(w.Explanation); s != "" {
+		return s
+	}
+	return strings.TrimSpace(w.Explain)
+}
+
+func toDBQuestion(w wireQuestion, idx int) db.Question {
+	return db.Question{
+		ID:            fmt.Sprintf("q%d", idx+1),
+		Type:          w.Type,
+		Prompt:        w.normPrompt(),
+		Options:       w.normOptions(),
+		CorrectAnswer: w.normAnswer(),
+		Explanation:   w.normExplanation(),
+		OrderIndex:    idx,
+	}
+}
+
+// --------------- Validation / Inference ---------------
+
+func validateWireQuestions(items []wireQuestion, allowedFormats []string) error {
 	for i, q := range items {
-		if q.Type == "" || strings.TrimSpace(q.Q) == "" {
-			return fmt.Errorf("q[%d] missing type or q", i)
+		if strings.TrimSpace(q.Type) == "" || strings.TrimSpace(q.normPrompt()) == "" {
+			return fmt.Errorf("q[%d] missing type or prompt", i)
 		}
 		switch q.Type {
 		case "mcq":
-			if len(q.Options) < 2 {
+			opts := q.normOptions()
+			if len(opts) < 2 {
 				return fmt.Errorf("q[%d] mcq requires at least 2 options", i)
 			}
-			if as, ok := q.Answer.(string); !ok || as == "" {
-				return fmt.Errorf("q[%d] mcq answer must be a non-empty string matching an option", i)
+			if _, ok := q.normAnswer().(string); !ok {
+				return fmt.Errorf("q[%d] mcq answer must be a string (one of the options)", i)
 			}
 		case "true_false":
-			switch q.Answer.(type) {
-			case bool: // ok
+			switch q.normAnswer().(type) {
+			case bool:
+				// ok
+			case string:
+				// allow "true"/"false" as string
+				// (frontend/normalizer will coerce for checking)
 			default:
-				return fmt.Errorf("q[%d] true_false answer must be boolean", i)
+				return fmt.Errorf("q[%d] true_false answer must be boolean or 'true'/'false' string", i)
 			}
 		case "fill_blank":
-			if _, ok := q.Answer.(string); !ok {
+			if _, ok := q.normAnswer().(string); !ok {
 				return fmt.Errorf("q[%d] fill_blank answer must be string", i)
 			}
+		case "mixed":
+			// Accept; your DB allows 'mixed'
 		default:
 			return fmt.Errorf("q[%d] invalid type %q", i, q.Type)
 		}
 	}
-	// optional: enforce allowedFormats
+
+	// Optional: enforce allowedFormats if provided
 	if len(allowedFormats) > 0 {
 		ok := map[string]bool{}
-		for _, f := range allowedFormats { ok[f] = true }
+		for _, f := range allowedFormats {
+			ok[f] = true
+		}
 		for i, q := range items {
 			if !ok[q.Type] {
 				return fmt.Errorf("q[%d] type %q not in allowed formats", i, q.Type)
@@ -214,11 +315,26 @@ func validateQuestions(items []db.Question, allowedFormats []string) error {
 	return nil
 }
 
-func inferFormat(items []db.Question) string {
+func inferWireFormat(items []wireQuestion) string {
 	seen := map[string]bool{}
-	for _, q := range items { seen[q.Type] = true }
+	for _, q := range items {
+		seen[q.Type] = true
+	}
 	if len(seen) == 1 {
-		for k := range seen { return k }
+		for k := range seen {
+			return k
+		}
 	}
 	return "mixed"
+}
+
+// --------------- JSON trimming helper ---------------
+
+func trimToJSONArray(s string) string {
+	start := strings.Index(s, "[")
+	end := strings.LastIndex(s, "]")
+	if start == -1 || end == -1 || end <= start {
+		return ""
+	}
+	return s[start : end+1]
 }

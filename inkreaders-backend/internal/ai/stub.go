@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+
 	"github.com/wedaa-tech/inkreaders-social-hub/inkreaders-backend/internal/db"
 )
 
@@ -14,7 +15,13 @@ func (s *Stub) Generate(ctx context.Context, p GenerateParams) (GenerateOut, err
 		InferredTitle:  ifEmpty(p.Title, "Exercise Set"),
 		InferredFormat: "mcq",
 		Questions: []db.Question{
-			{Type: "mcq", Q: "Stub question?", Options: []string{"A","B"}, Answer: "A"},
+			{
+				Type:          "mcq",
+				Prompt:        "Stub question?",
+				Options:       []string{"A", "B"},
+				CorrectAnswer: "A",
+				Explanation:   "Because A.",
+			},
 		},
 	}, nil
 }
@@ -34,6 +41,8 @@ func (s *Stub) Remix(ctx context.Context, p RemixParams) (db.ExerciseSet, error)
 }
 
 func ifEmpty(s, def string) string {
-	if s == "" { return def }
+	if s == "" {
+		return def
+	}
 	return s
 }

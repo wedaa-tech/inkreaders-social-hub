@@ -2,26 +2,30 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { normalizeExercise, Exercise } from "@/lib/normalizeExercise";
+import { normalizeExercise, toApiExercise, Exercise } from "@/lib/normalizeExercise";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
 
 export default function ExercisesGeneratePage() {
   const [loading, setLoading] = useState(false);
   const [exercise, setExercise] = useState<Exercise | null>(null);
+  const [language, setLanguage] = useState<"en" | "hi">("en"); // remember form language
   const router = useRouter();
 
   async function handleGenerate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
 
+    const lang = (form.get("language")?.toString() as "en" | "hi") || "en";
+    setLanguage(lang);
+
     const body = {
       title: form.get("title")?.toString() || "",
       topic: form.get("topic")?.toString() || "",
-      formats: [form.get("format")?.toString() || "mcq"], // ✅ exactly one format
+      formats: [form.get("format")?.toString() || "mcq"],
       count: Number(form.get("count") || 5),
       difficulty: form.get("difficulty")?.toString() || "mixed",
-      language: form.get("language")?.toString() || "en",
+      language: lang,
       source: { type: "topic" },
     };
 
@@ -35,8 +39,6 @@ export default function ExercisesGeneratePage() {
       });
       if (!res.ok) throw new Error("Failed to generate exercise");
       const data = await res.json();
-
-      // ✅ Normalize here so preview list and save are consistent
       setExercise(normalizeExercise(data.exercise_set));
     } catch (err) {
       console.error(err);

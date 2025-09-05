@@ -1,7 +1,14 @@
 "use client";
 
-import { Exercise, UserAnswer, Question } from "@/app/exercises/[id]/preview/page";
+//import { Exercise, UserAnswer, Question } from "@/app/exercises/[id]/preview/page";
 import { useState } from "react";
+
+import {
+  normalizeExercise,
+  Exercise,
+  UserAnswer,
+  Question
+} from "@/lib/normalizeExercise";
 
 type Props = {
   exercise: Exercise;
@@ -10,105 +17,78 @@ type Props = {
   onRetry: () => void;
 };
 
-export default function ExerciseResults({ exercise, answers, score, onRetry }: Props) {
-  const [loadingRemix, setLoadingRemix] = useState(false);
-
-  const handleRemix = async () => {
+function prettyAnswer(val: unknown, type: Question["type"]): string {
+  if (val == null) return "—";
+  if (type === "true_false") {
+    const s = String(val).toLowerCase().trim();
+    if (s === "true") return "True";
+    if (s === "false") return "False";
+    return s || "—";
+  }
+  if (Array.isArray(val)) {
+    return val.length ? val.join(", ") : "—";
+  }
+  if (typeof val === "object") {
     try {
-      setLoadingRemix(true);
-      const res = await fetch(`/api/exercises/${exercise.id}/remix`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include", // ✅ include session cookies
-        body: JSON.stringify({
-          transform: {
-            increase_difficulty: true,
-            reduce_count_to: 0,
-            switch_format_to: "",
-          },
-          note: "User requested harder remix from results page",
-        }),
-      });
-
-      if (!res.ok) throw new Error("Failed to remix exercise");
-
-      const data = await res.json();
-      const newId = data.derived_set_id; // ✅ backend field
-
-      if (!newId) throw new Error("No remix ID returned");
-
-      // ✅ Redirect to new exercise preview
-      window.location.href = `/exercises/${newId}/preview`;
-    } catch (err) {
-      console.error(err);
-      alert("Could not remix exercise. Please try again.");
-    } finally {
-      setLoadingRemix(false);
+      const obj = val as Record<string, string>;
+      const entries = Object.entries(obj);
+      return entries.length ? entries.map(([k, v]) => `${k} → ${v || "—"}`).join(", ") : "—";
+    } catch {
+      return "—";
     }
-  };
+  }
+  const s = String(val);
+  return s.length ? s : "—";
+}
 
-  const renderAnswer = (q: Question, ans?: UserAnswer) => {
-    if (!ans) return <p className="text-gray-500">No answer provided</p>;
-
-    if (q.type === "match") {
-      return (
-        <div className="mt-2">
-          <p className={ans.isCorrect ? "text-green-600" : "text-red-600"}>
-            Your order: {Array.isArray(ans.value) ? ans.value.join(" → ") : String(ans.value)}
-          </p>
-          {Array.isArray(q.correctAnswer) && !ans.isCorrect && (
-            <p className="text-green-600">
-              Correct order: {q.correctAnswer.join(" → ")}
-            </p>
-          )}
-        </div>
-      );
-    }
-
-    return (
-      <p className={ans.isCorrect ? "text-green-600" : "text-red-600"}>
-        Your answer: {String(ans.value)}
-        {!ans.isCorrect && (
-          <span className="ml-2 text-green-600">
-            (Correct: {String(q.correctAnswer)})
-          </span>
-        )}
-      </p>
-    );
-  };
+export default function ExerciseResults({ exercise, answers, score, onRetry }: Props) {
+  const total = exercise.questions.length;
 
   return (
-    <div className="my-6">
-      <h2 className="text-xl font-bold mb-4">
-        Results: {score} / {exercise.questions.length}
-      </h2>
+    <div className="bg-white p-6 rounded-xl shadow">
+      <h2 className="text-xl font-semibold">Results</h2>
+      <p className="text-gray-600 mt-1">
+        Score: {score} / {total}
+      </p>
 
-      {exercise.questions.map((q) => {
-        const ans = answers[q.id];
-        return (
-          <div key={q.id} className="mb-4 border p-3 rounded">
-            <p className="font-medium">{q.prompt}</p>
-            {renderAnswer(q, ans)}
-            {q.explanation && (
-              <p className="text-sm text-gray-600 mt-1">{q.explanation}</p>
-            )}
-          </div>
-        );
-      })}
+      <ol className="mt-4 space-y-3">
+        {exercise.questions.map((q, idx) => {
+          const ua = answers[q.id];
+          const correct = ua?.isCorrect;
 
-      <div className="flex gap-3 mt-6">
+          return (
+            <li key={q.id} className="border rounded-lg p-3">
+              <p className="font-medium">Q{idx + 1}. {q.prompt || "—"}</p>
+
+              <p className="text-sm mt-1">
+                Your answer:{" "}
+                <span className={correct ? "text-green-700" : "text-red-700"}>
+                  {prettyAnswer(ua?.value, q.type)}
+                </span>
+                {!correct && (
+                  <>
+                    {" "}
+                    <span className="text-gray-500">
+                      (Correct: {prettyAnswer(q.correctAnswer, q.type)})
+                    </span>
+                  </>
+                )}
+              </p>
+
+              {q.explanation && (
+                <p className="text-xs text-gray-500 mt-1">Why: {q.explanation}</p>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+
+      <div className="mt-6 flex gap-3">
         <button
+          className="px-4 py-2 bg-blue-600 text-white rounded"
           onClick={onRetry}
-          className="px-4 py-2 bg-blue-500 text-white rounded"
         >
           Retry
-        </button>
-        <button
-          onClick={handleRemix}
-          disabled={loadingRemix}
-          className="px-4 py-2 bg-purple-500 text-white rounded disabled:opacity-50"
-        >
-          {loadingRemix ? "Remixing..." : "Remix Harder"}
         </button>
       </div>
     </div>

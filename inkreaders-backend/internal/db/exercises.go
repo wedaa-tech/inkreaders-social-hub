@@ -9,10 +9,10 @@ import (
 
 var ErrForbidden = errors.New("forbidden")
 
-// ------------------ Types ------------------
+// ---------- Types (your existing ones kept) ----------
 
 type ExerciseSource struct {
-	Type   string  `json:"type"`              // topic|text|file|remix
+	Type   string  `json:"type"`
 	Topic  string  `json:"topic,omitempty"`
 	FileID *string `json:"file_id,omitempty"`
 }
@@ -25,27 +25,29 @@ type ExerciseMeta struct {
 }
 
 type Question struct {
-	Type    string   `json:"type"`
-	Q       string   `json:"q"`
-	Options []string `json:"options,omitempty"`
-	Answer  any      `json:"answer"`
-	Explain string   `json:"explain,omitempty"`
+	ID            string      `json:"id"`
+	Type          string      `json:"type"`
+	Prompt        string      `json:"prompt"`
+	Options       []string    `json:"options,omitempty"`
+	CorrectAnswer any         `json:"correct_answer"`
+	Explanation   string      `json:"explanation,omitempty"`
+	OrderIndex    int         `json:"order_index,omitempty"`
 }
 
 type ExerciseSet struct {
-	ID          string       `json:"id"`
-	UserID      string       `json:"user_id"`
-	Title       string       `json:"title"`
-	Format      string       `json:"format"`
-	Questions   []Question   `json:"questions"`
-	Meta        ExerciseMeta `json:"meta"`
-	Visibility  string       `json:"visibility"`
-	ParentSetID *string      `json:"parent_set_id,omitempty"`
-	ATURI       string       `json:"at_uri,omitempty"`
-	CID         string       `json:"cid,omitempty"`
-	FeedURI     *string      `json:"feed_uri,omitempty"` // ✅ new
-	CreatedAt   time.Time    `json:"created_at"`
-	UpdatedAt   time.Time    `json:"updated_at"`
+	ID         string       `json:"id"`
+	UserID     string       `json:"user_id"`
+	Title      string       `json:"title"`
+	Format     string       `json:"format"`
+	Questions  []Question   `json:"questions"`
+	Meta       ExerciseMeta `json:"meta"`
+	Visibility string       `json:"visibility"`
+	ParentSetID *string     `json:"parent_set_id,omitempty"`
+	ATURI      *string      `json:"at_uri,omitempty"`
+	CID        *string      `json:"cid,omitempty"`
+	FeedURI    *string      `json:"feed_uri,omitempty"`
+	CreatedAt  time.Time    `json:"created_at"`
+	UpdatedAt  time.Time    `json:"updated_at"`
 }
 
 type ExercisePatch struct {
@@ -55,33 +57,37 @@ type ExercisePatch struct {
 	Meta       *ExerciseMeta `json:"meta,omitempty"`
 }
 
+func toJSON(v any) []byte {
+	b, _ := json.Marshal(v)
+	return b
+}
+
 // ------------------ CRUD ------------------
 
-// InsertExerciseSet serializes Questions + Meta into JSON for storage
-func (s *Store) InsertExerciseSet(ctx context.Context, e *ExerciseSet) error {
-	qjson, err := json.Marshal(e.Questions)
-	if err != nil {
-		return err
-	}
-	mjson, err := json.Marshal(e.Meta)
-	if err != nil {
-		return err
-	}
-
-	_, err = s.Pool.Exec(ctx, `
+func (s *Store) InsertExerciseSet(ctx context.Context, set *ExerciseSet) error {
+	// Upsert semantics (insert if new; update if exists) to keep things simple.
+	_, err := s.Pool.Exec(ctx, `
 		INSERT INTO exercise_sets
 			(id, user_id, title, format, questions, meta, visibility, parent_set_id, at_uri, cid, feed_uri, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,now(),now())
+		VALUES
+			($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7,$8,$9,$10,$11, now(), now())
 		ON CONFLICT (id) DO UPDATE SET
-			title=$3, format=$4, questions=$5, meta=$6,
-			visibility=$7, parent_set_id=$8, at_uri=$9, cid=$10, feed_uri=$11,
+			title=EXCLUDED.title,
+			format=EXCLUDED.format,
+			questions=EXCLUDED.questions,
+			meta=EXCLUDED.meta,
+			visibility=EXCLUDED.visibility,
+			parent_set_id=EXCLUDED.parent_set_id,
+			at_uri=COALESCE(EXCLUDED.at_uri, exercise_sets.at_uri),
+			cid=COALESCE(EXCLUDED.cid, exercise_sets.cid),
+			feed_uri=COALESCE(EXCLUDED.feed_uri, exercise_sets.feed_uri),
 			updated_at=now()
-	`, e.ID, e.UserID, e.Title, e.Format, qjson, mjson, e.Visibility, e.ParentSetID, e.ATURI, e.CID, e.FeedURI)
+	`, set.ID, set.UserID, set.Title, set.Format, toJSON(set.Questions), toJSON(set.Meta),
+		set.Visibility, set.ParentSetID, set.ATURI, set.CID, set.FeedURI)
 	return err
 }
 
-// GetExerciseSet loads a single set, unmarshalling JSONB
-func (s *Store) GetExerciseSet(ctx context.Context, id, owner string) (ExerciseSet, error) {
+func (s *Store) GetExerciseSet(ctx context.Context, id string, owner string) (*ExerciseSet, error) {
 	var e ExerciseSet
 	var qjson, mjson []byte
 
@@ -93,24 +99,22 @@ func (s *Store) GetExerciseSet(ctx context.Context, id, owner string) (ExerciseS
 	`, id, owner).Scan(
 		&e.ID, &e.UserID, &e.Title, &e.Format,
 		&qjson, &mjson, &e.Visibility,
-		&e.ParentSetID, &e.ATURI, &e.CID, &e.FeedURI,
-		&e.CreatedAt, &e.UpdatedAt,
+		&e.ParentSetID, &e.ATURI, &e.CID, &e.FeedURI, &e.CreatedAt, &e.UpdatedAt,
 	)
 	if err != nil {
-		return ExerciseSet{}, err
+		return nil, err
 	}
-
 	if err := json.Unmarshal(qjson, &e.Questions); err != nil {
-		return ExerciseSet{}, err
+		return nil, err
 	}
 	if err := json.Unmarshal(mjson, &e.Meta); err != nil {
-		return ExerciseSet{}, err
+		return nil, err
 	}
-	return e, nil
+	return &e, nil
 }
 
 func (s *Store) UpdateExerciseSet(ctx context.Context, id, owner string, p *ExercisePatch) error {
-	// fetch existing
+	// load existing
 	existing, err := s.GetExerciseSet(ctx, id, owner)
 	if err != nil {
 		return err
@@ -119,7 +123,6 @@ func (s *Store) UpdateExerciseSet(ctx context.Context, id, owner string, p *Exer
 		return ErrForbidden
 	}
 
-	// apply patch
 	if p.Title != nil {
 		existing.Title = *p.Title
 	}
@@ -134,27 +137,25 @@ func (s *Store) UpdateExerciseSet(ctx context.Context, id, owner string, p *Exer
 	}
 	existing.UpdatedAt = time.Now()
 
-	return s.InsertExerciseSet(ctx, &existing)
+	return s.InsertExerciseSet(ctx, existing)
 }
 
-func (s *Store) MarkPublished(ctx context.Context, id, owner, atURI, cid string) error {
+func (s *Store) MarkPublished(ctx context.Context, id, owner, atURI, cid, feedURI string) error {
 	_, err := s.Pool.Exec(ctx, `
 		UPDATE exercise_sets
-		SET at_uri=$1, cid=$2, updated_at=now()
-		WHERE id=$3 AND user_id=$4
-	`, atURI, cid, id, owner)
+		SET at_uri=$1, cid=$2, feed_uri=$3, updated_at=now()
+		WHERE id=$4 AND user_id=$5
+	`, atURI, cid, feedURI, id, owner)
 	return err
 }
 
-// ListExerciseSets returns all sets for a user, unmarshalling JSONB
 func (s *Store) ListExerciseSets(ctx context.Context, owner, cursor string, limit int, visibility string) ([]ExerciseSet, string, error) {
 	if limit <= 0 {
 		limit = 20
 	}
 
 	rows, err := s.Pool.Query(ctx, `
-		SELECT id, user_id, title, format, questions, meta, visibility,
-		       parent_set_id, at_uri, cid, feed_uri, created_at, updated_at
+		SELECT id, user_id, title, format, meta, visibility, parent_set_id, at_uri, cid, feed_uri, created_at, updated_at
 		FROM exercise_sets
 		WHERE user_id=$1
 		ORDER BY created_at DESC
@@ -168,22 +169,18 @@ func (s *Store) ListExerciseSets(ctx context.Context, owner, cursor string, limi
 	var out []ExerciseSet
 	for rows.Next() {
 		var e ExerciseSet
-		var qjson, mjson []byte
-		err := rows.Scan(
+		var mjson []byte
+		if err := rows.Scan(
 			&e.ID, &e.UserID, &e.Title, &e.Format,
-			&qjson, &mjson, &e.Visibility,
-			&e.ParentSetID, &e.ATURI, &e.CID, &e.FeedURI,
+			&mjson, &e.Visibility, &e.ParentSetID, &e.ATURI, &e.CID, &e.FeedURI,
 			&e.CreatedAt, &e.UpdatedAt,
-		)
-		if err != nil {
-			return nil, "", err
-		}
-		if err := json.Unmarshal(qjson, &e.Questions); err != nil {
+		); err != nil {
 			return nil, "", err
 		}
 		if err := json.Unmarshal(mjson, &e.Meta); err != nil {
 			return nil, "", err
 		}
+		// We intentionally do NOT load big 'questions' blob for Mine list
 		out = append(out, e)
 	}
 
