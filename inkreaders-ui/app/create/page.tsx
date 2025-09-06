@@ -7,6 +7,9 @@ import WhoToFollow from "@/app/components/right/WhoToFollow";
 import { TrendingBooks } from "@/app/components/right/TrendingBooks";
 import { useToast } from "@/app/components/ToastProvider";
 import { normalizeExercise, Exercise as NormalizedExercise } from "@/lib/normalizeExercise";
+import { FaBook, FaPencilAlt, FaGlobeAmericas, FaSpinner, FaMagic, FaRegLightbulb } from 'react-icons/fa'; // Added icon imports
+import { CiCircleCheck, CiCircleAlert } from "react-icons/ci"; // Toast icons
+import { IoIosWarning } from "react-icons/io";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
 
@@ -49,15 +52,21 @@ function usePublish() {
 type TabKey = "story" | "exercise" | "pack";
 
 function Tabs({ tab, onChange }: { tab: TabKey; onChange: (t: TabKey) => void }) {
-  const base = "rounded-xl px-3 py-1 text-sm transition hover:bg-gray-100";
-  const active = "bg-[color:var(--color-brand)] text-white hover:opacity-90";
+  const base = "flex-1 flex items-center justify-center rounded-full px-4 py-2 text-sm transition-all duration-300 font-medium";
+  const active = "bg-white text-[color:var(--color-brand)] shadow-lg";
+  const inactive = "text-gray-600 hover:bg-gray-100";
+
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-2">
-      <div className="flex flex-wrap gap-2">
-        <button onClick={() => onChange("story")} className={`${base} ${tab === "story" ? active : ""}`} type="button">✍️ Story</button>
-        <button onClick={() => onChange("exercise")} className={`${base} ${tab === "exercise" ? active : ""}`} type="button">📝 Exercise</button>
-        <button onClick={() => onChange("pack")} className={`${base} ${tab === "pack" ? active : ""}`} type="button">🌍 Current Affairs Pack</button>
-      </div>
+    <div className="flex items-center space-x-2 rounded-full bg-gray-100 p-1.5 shadow-inner">
+      <button onClick={() => onChange("story")} className={`${base} ${tab === "story" ? active : inactive}`} type="button">
+        <FaPencilAlt className="mr-2" /> Story
+      </button>
+      <button onClick={() => onChange("exercise")} className={`${base} ${tab === "exercise" ? active : inactive}`} type="button">
+        <FaBook className="mr-2" /> Exercise
+      </button>
+      <button onClick={() => onChange("pack")} className={`${base} ${tab === "pack" ? active : inactive}`} type="button">
+        <FaGlobeAmericas className="mr-2" /> Pack
+      </button>
     </div>
   );
 }
@@ -65,38 +74,39 @@ function Tabs({ tab, onChange }: { tab: TabKey; onChange: (t: TabKey) => void })
 /* ----------------------------- Preview Card ----------------------------- */
 function PreviewCard({ title, subtitle, body, tags }: { title: string; subtitle?: string; body: string; tags?: string[] }) {
   return (
-    <article className="rounded-2xl border border-gray-200 bg-white">
-      <header className="flex items-start gap-3 p-4">
-        <div className="h-10 w-10 rounded-full bg-gray-200" />
-        <div className="min-w-0">
+    <article className="rounded-3xl border border-gray-200 bg-white p-6 shadow-xl transition-all duration-300 hover:shadow-2xl">
+      <header className="flex items-start gap-4">
+        <div className="h-12 w-12 rounded-full bg-gray-200 flex items-center justify-center text-xl text-gray-500">
+          <FaRegLightbulb />
+        </div>
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="font-semibold">You</span>
+            <span className="font-bold text-gray-800">You</span>
             <span className="truncate text-sm text-gray-500">@reader.example</span>
-            <span className="text-sm text-gray-400">· preview</span>
           </div>
           <div className="mt-1">
-            <div className="font-medium">{title}</div>
-            {subtitle && <div className="text-sm text-gray-600">{subtitle}</div>}
+            <div className="font-semibold text-lg text-gray-900">{title}</div>
+            {subtitle && <div className="text-sm text-gray-600 mt-0.5">{subtitle}</div>}
           </div>
         </div>
       </header>
 
-      <div className="px-4 pb-4">
-        <pre className="whitespace-pre-wrap break-words text-[0.95rem] leading-6 text-gray-800">{body}</pre>
+      <div className="mt-4">
+        <pre className="whitespace-pre-wrap break-words text-base leading-relaxed text-gray-700 font-sans">{body}</pre>
         {tags && tags.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className="mt-4 flex flex-wrap gap-2">
             {tags.map((t) => (
-              <span key={t} className="rounded-full border px-2 py-0.5 text-xs text-gray-600">#{t}</span>
+              <span key={t} className="rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600 font-medium transition hover:bg-gray-200">#{t}</span>
             ))}
           </div>
         )}
       </div>
 
-      <div className="border-t border-gray-200 px-4 py-2 text-sm text-gray-500">
-        <div className="flex gap-6">
-          <span className="cursor-default">💬 0</span>
-          <span className="cursor-default">🔁 0</span>
-          <span className="cursor-default">❤️ 0</span>
+      <div className="mt-5 border-t border-gray-100 pt-4 text-sm text-gray-500">
+        <div className="flex items-center gap-6">
+          <span className="cursor-pointer hover:text-[color:var(--color-brand)] transition">💬 0</span>
+          <span className="cursor-pointer hover:text-green-500 transition">🔁 0</span>
+          <span className="cursor-pointer hover:text-red-500 transition">❤️ 0</span>
         </div>
       </div>
     </article>
@@ -141,31 +151,38 @@ function StoryComposer() {
   }
 
   return (
-    <section className="space-y-3">
-      <div className="rounded-2xl border border-gray-200 bg-white p-4 space-y-3">
-        <h3 className="font-medium">Write a Story</h3>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" className="rounded-xl border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-[color:var(--color-brand)]" />
-          <input value={genre} onChange={(e) => setGenre(e.target.value)} placeholder="Genre (e.g., Mystery, Sci-Fi)" className="rounded-xl border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-[color:var(--color-brand)]" />
+    <section className="space-y-6">
+      <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-md">
+        <h3 className="text-xl font-semibold text-gray-800 mb-4">Write a Story</h3>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" className="rounded-xl border border-gray-300 px-4 py-2.5 outline-none transition focus:ring-2 focus:ring-[color:var(--color-brand)] focus:border-transparent" />
+          <input value={genre} onChange={(e) => setGenre(e.target.value)} placeholder="Genre (e.g., Mystery, Sci-Fi)" className="rounded-xl border border-gray-300 px-4 py-2.5 outline-none transition focus:ring-2 focus:ring-[color:var(--color-brand)] focus:border-transparent" />
         </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <select value={audience} onChange={(e) => setAudience(e.target.value)} className="rounded-xl border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-[color:var(--color-brand)]">
+        <div className="grid gap-4 mt-4 sm:grid-cols-2">
+          <select value={audience} onChange={(e) => setAudience(e.target.value)} className="rounded-xl border border-gray-300 px-4 py-2.5 outline-none transition focus:ring-2 focus:ring-[color:var(--color-brand)] focus:border-transparent">
             <option>General</option><option>Kids</option><option>Young Adult</option><option>Adults</option>
           </select>
           <div className="flex gap-2">
-            <button onClick={suggestOutline} className="rounded-xl border px-3 py-2 text-sm hover:bg-gray-50" type="button">AI: Outline</button>
-            <button onClick={suggestNextParagraph} className="rounded-xl border px-3 py-2 text-sm hover:bg-gray-50" type="button">AI: Next paragraph</button>
+            <button onClick={suggestOutline} className="flex-1 rounded-xl bg-gray-50 border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition" type="button">
+              <FaMagic className="mr-2" /> AI: Outline
+            </button>
+            <button onClick={suggestNextParagraph} className="flex-1 rounded-xl bg-gray-50 border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition" type="button">
+              <FaMagic className="mr-2" /> AI: Next paragraph
+            </button>
           </div>
         </div>
-        <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={10} placeholder="Start writing…" className="w-full rounded-xl border border-gray-300 p-3 outline-none focus:ring-2 focus:ring-[color:var(--color-brand)]" />
-        <div className="flex justify-end gap-2">
-          <button onClick={() => { setTitle(""); setGenre(""); setAudience("General"); setBody(""); }} className="rounded-xl px-3 py-2 text-sm hover:bg-gray-50 border" type="button">Clear</button>
-          <button onClick={publish} className="rounded-xl bg-[color:var(--color-brand)] px-4 py-2 text-sm font-medium text-white hover:opacity-90" type="button">Publish</button>
+        <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={10} placeholder="Start writing…" className="w-full mt-4 rounded-xl border border-gray-300 p-4 outline-none transition focus:ring-2 focus:ring-[color:var(--color-brand)] focus:border-transparent" />
+        <div className="flex justify-end gap-3 mt-4">
+          <button onClick={() => { setTitle(""); setGenre(""); setAudience("General"); setBody(""); }} className="rounded-xl bg-white border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition" type="button">Clear</button>
+          <button onClick={publish} className="rounded-xl bg-[color:var(--color-brand)] px-5 py-2.5 text-sm font-semibold text-white shadow-md hover:bg-brand-dark transition" type="button">Publish</button>
         </div>
       </div>
 
       {/* Live preview */}
-      <PreviewCard title={title || "(untitled)"} subtitle={genre ? `${genre} • ${audience}` : audience} body={excerpt || "Start typing to see a preview…"} tags={tags} />
+      <div className="bg-gray-100 p-6 rounded-3xl shadow-inner">
+        <h4 className="text-xl font-semibold mb-4 text-gray-800">Live Preview</h4>
+        <PreviewCard title={title || "(untitled)"} subtitle={genre ? `${genre} • ${audience}` : audience} body={excerpt || "Start typing to see a preview…"} tags={tags} />
+      </div>
     </section>
   );
 }
@@ -238,85 +255,95 @@ function ExerciseGenerator() {
   }
 
   return (
-    <section className="space-y-3">
-      <div className="rounded-2xl border border-gray-200 bg-white p-4 space-y-3">
-        <h3 className="font-medium">Generate an Exercise</h3>
-        <form onSubmit={handleGenerate} className="grid gap-3 sm:grid-cols-4">
-          <input name="title" placeholder="Title (optional)" className="rounded-xl border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-[color:var(--color-brand)] col-span-2" />
-          <input name="topic" placeholder="Topic (e.g., Solar System)" required className="rounded-xl border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-[color:var(--color-brand)]" />
-          <select name="format" defaultValue="mcq" className="rounded-xl border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-[color:var(--color-brand)]">
-            <option value="mcq">Multiple Choice</option>
-            <option value="true_false">True/False</option>
-            <option value="fill_blank">Fill in the Blank</option>
-            <option value="match">Matching</option>
-          </select>
+    <section className="space-y-6">
+      <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-md">
+        <h3 className="text-xl font-semibold text-gray-800 mb-4">Generate an Exercise</h3>
+        <form onSubmit={handleGenerate} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <input name="title" placeholder="Title (optional)" className="rounded-xl border border-gray-300 px-4 py-2.5 outline-none transition focus:ring-2 focus:ring-[color:var(--color-brand)] focus:border-transparent col-span-2" />
+          <input name="topic" placeholder="Topic (e.g., Solar System)" required className="rounded-xl border border-gray-300 px-4 py-2.5 outline-none transition focus:ring-2 focus:ring-[color:var(--color-brand)] focus:border-transparent col-span-2" />
 
-          <div className="sm:col-span-1">
-            <label className="text-sm text-gray-600">Count</label>
-            <input name="count" type="number" defaultValue={5} min={1} max={20} className="mt-1 w-full rounded-lg border px-3 py-2" />
+          <div className="flex flex-col">
+            <label className="text-sm font-medium text-gray-600 mb-1">Format</label>
+            <select name="format" defaultValue="mcq" className="rounded-xl border border-gray-300 px-4 py-2.5 outline-none transition focus:ring-2 focus:ring-[color:var(--color-brand)] focus:border-transparent">
+              <option value="mcq">Multiple Choice</option>
+              <option value="true_false">True/False</option>
+              <option value="fill_blank">Fill in the Blank</option>
+              <option value="match">Matching</option>
+            </select>
           </div>
-
-          <div>
-            <label className="text-sm text-gray-600">Difficulty</label>
-            <select name="difficulty" defaultValue="mixed" className="mt-1 w-full rounded-lg border px-3 py-2">
+          <div className="flex flex-col">
+            <label className="text-sm font-medium text-gray-600 mb-1">Count</label>
+            <input name="count" type="number" defaultValue={5} min={1} max={20} className="rounded-xl border border-gray-300 px-4 py-2.5 outline-none transition focus:ring-2 focus:ring-[color:var(--color-brand)] focus:border-transparent" />
+          </div>
+          <div className="flex flex-col">
+            <label className="text-sm font-medium text-gray-600 mb-1">Difficulty</label>
+            <select name="difficulty" defaultValue="mixed" className="rounded-xl border border-gray-300 px-4 py-2.5 outline-none transition focus:ring-2 focus:ring-[color:var(--color-brand)] focus:border-transparent">
               <option value="easy">Easy</option>
               <option value="medium">Medium</option>
               <option value="hard">Hard</option>
               <option value="mixed">Mixed</option>
             </select>
           </div>
-
-          <div>
-            <label className="text-sm text-gray-600">Language</label>
-            <select name="language" defaultValue="en" className="mt-1 w-full rounded-lg border px-3 py-2">
+          <div className="flex flex-col">
+            <label className="text-sm font-medium text-gray-600 mb-1">Language</label>
+            <select name="language" defaultValue="en" className="rounded-xl border border-gray-300 px-4 py-2.5 outline-none transition focus:ring-2 focus:ring-[color:var(--color-brand)] focus:border-transparent">
               <option value="en">English</option>
               <option value="hi">Hindi</option>
             </select>
           </div>
 
-          <div className="sm:col-span-4 flex gap-2 mt-2">
-            <button type="submit" disabled={loading} className="rounded-xl bg-[color:var(--color-brand)] px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+          <div className="col-span-full flex gap-3 mt-4 justify-end">
+            <button type="button" onClick={() => { setExercise(null); push({ variant: "success", message: "Cleared" }); }} className="rounded-xl bg-white border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition">Clear</button>
+            <button type="submit" disabled={loading} className="flex items-center rounded-xl bg-[color:var(--color-brand)] px-5 py-2.5 text-sm font-semibold text-white shadow-md hover:bg-brand-dark transition disabled:opacity-60 disabled:cursor-not-allowed">
+              {loading && <FaSpinner className="animate-spin mr-2" />}
               {loading ? "Generating…" : "Generate"}
             </button>
-            <button type="button" onClick={() => { setExercise(null); push({ variant: "success", message: "Cleared" }); }} className="rounded-xl px-3 py-2 text-sm hover:bg-gray-50 border">Clear</button>
-            <button type="button" onClick={handleSaveAndPreview} disabled={!exercise} className="ml-auto rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50">
-              Save & Continue →
+            <button type="button" onClick={handleSaveAndPreview} disabled={!exercise} className="flex items-center rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed">
+              Save & Continue
             </button>
           </div>
         </form>
 
         {/* Preview */}
         {exercise ? (
-          <div className="mt-3 rounded-lg border bg-gray-50 p-3">
-            <div className="flex items-center justify-between">
+          <div className="mt-6 rounded-2xl bg-gray-100 p-5 border border-gray-200">
+            <div className="flex items-center justify-between pb-3 mb-3 border-b border-gray-200">
               <div>
-                <div className="font-semibold">{exercise.title || "(untitled)"}</div>
+                <div className="font-semibold text-gray-800">{exercise.title || "(untitled)"}</div>
                 <div className="text-sm text-gray-600">{exercise.format?.toUpperCase()} • {exercise.difficulty}</div>
               </div>
               <div className="text-sm text-gray-500">Language: {language}</div>
             </div>
 
-            <ul className="space-y-3 mt-3">
+            <ul className="space-y-4">
               {exercise.questions?.map((q, idx) => (
-                <li key={q.id} className="rounded-lg border bg-white p-3">
-                  <p className="font-medium">Q{idx + 1}. {q.prompt}</p>
+                <li key={q.id} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                  <p className="font-medium text-gray-800">Q{idx + 1}. {q.prompt}</p>
                   {q.options && q.options.length > 0 && (
-                    <ul className="ml-4 list-disc text-sm text-gray-600">
+                    <ul className="ml-4 list-disc space-y-1 mt-2 text-sm text-gray-600">
                       {q.options.map((o, i) => <li key={i}>{o}</li>)}
                     </ul>
                   )}
-                  <p className="text-sm text-green-700 mt-1">Answer: {Array.isArray(q.correctAnswer) ? q.correctAnswer.join(", ") : typeof q.correctAnswer === "object" ? JSON.stringify(q.correctAnswer) : String(q.correctAnswer)}</p>
+                  <div className="flex items-center text-sm text-green-700 mt-2 font-medium">
+                    <CiCircleCheck className="mr-1 text-base text-green-600" /> Answer: {Array.isArray(q.correctAnswer) ? q.correctAnswer.join(", ") : typeof q.correctAnswer === "object" ? JSON.stringify(q.correctAnswer) : String(q.correctAnswer)}
+                  </div>
                 </li>
               ))}
             </ul>
           </div>
         ) : (
-          <div className="mt-3 text-sm text-gray-500">No preview yet — generate to see the exercise.</div>
+          <div className="mt-6 rounded-2xl bg-gray-100 p-6 text-center text-gray-500">
+            <IoIosWarning className="text-4xl text-gray-400 mx-auto mb-2" />
+            <div className="text-sm">No preview yet — generate to see the exercise.</div>
+          </div>
         )}
       </div>
 
       {/* Live preview card */}
-      <PreviewCard title={exercise ? (exercise.title || "Exercise Preview") : "Exercise Preview"} subtitle={exercise ? `${exercise.format?.toUpperCase()} • ${exercise.difficulty}` : "Provide topic and generate"} body={(exercise ? exercise.questions.slice(0, 6).map((q, i) => `${i+1}. ${q.prompt}`).join("\n") : "Generate to see a preview…")} tags={["Exercise", "Learning"]} />
+      <div className="bg-gray-100 p-6 rounded-3xl shadow-inner">
+        <h4 className="text-xl font-semibold mb-4 text-gray-800">Preview as Post</h4>
+        <PreviewCard title={exercise ? (exercise.title || "Exercise Preview") : "Exercise Preview"} subtitle={exercise ? `${exercise.format?.toUpperCase()} • ${exercise.difficulty}` : "Provide topic and generate"} body={(exercise ? exercise.questions.slice(0, 6).map((q, i) => `${i+1}. ${q.prompt}`).join("\n") : "Generate to see a preview…")} tags={["Exercise", "Learning"]} />
+      </div>
     </section>
   );
 }
@@ -351,35 +378,45 @@ function PackGenerator() {
   }
 
   return (
-    <section className="space-y-3">
-      <div className="rounded-2xl border border-gray-200 bg-white p-4 space-y-3">
-        <h3 className="font-medium">Current Affairs Pack</h3>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <select value={range} onChange={(e) => setRange(e.target.value as "weekly" | "monthly")} className="rounded-xl border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-[color:var(--color-brand)]">
+    <section className="space-y-6">
+      <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-md">
+        <h3 className="text-xl font-semibold text-gray-800 mb-4">Current Affairs Pack</h3>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <select value={range} onChange={(e) => setRange(e.target.value as "weekly" | "monthly")} className="rounded-xl border border-gray-300 px-4 py-2.5 outline-none transition focus:ring-2 focus:ring-[color:var(--color-brand)] focus:border-transparent">
             <option value="weekly">Weekly</option>
             <option value="monthly">Monthly</option>
           </select>
-          <input value={focus} onChange={(e) => setFocus(e.target.value)} placeholder="Focus (e.g., India, Science, Economy)" className="rounded-xl border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-[color:var(--color-brand)]" />
-          <button onClick={generate} className="rounded-xl border px-3 py-2 text-sm hover:bg-gray-50" type="button">Generate outline (stub)</button>
+          <input value={focus} onChange={(e) => setFocus(e.target.value)} placeholder="Focus (e.g., India, Science)" className="rounded-xl border border-gray-300 px-4 py-2.5 outline-none transition focus:ring-2 focus:ring-[color:var(--color-brand)] focus:border-transparent" />
+          <button onClick={generate} className="rounded-xl bg-gray-50 border border-gray-200 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-100 transition" type="button">
+            <FaMagic className="mr-2 inline-block" /> Generate outline
+          </button>
         </div>
 
-        <div className="rounded-xl border p-3">
+        <div className="mt-6 rounded-2xl bg-gray-100 p-5 border border-gray-200">
+          <h4 className="font-semibold text-gray-800 mb-2">Generated Outline</h4>
           {sections.length === 0 ? (
-            <div className="text-sm text-gray-500">No outline yet — click Generate.</div>
+            <div className="text-center text-gray-500">
+              <IoIosWarning className="text-4xl text-gray-400 mx-auto mb-2" />
+              <div className="text-sm">No outline yet — click Generate.</div>
+            </div>
           ) : (
-            <ul className="list-disc space-y-1 pl-5 text-sm">
+            <ul className="list-disc space-y-2 pl-5 text-gray-700">
               {sections.map((s, i) => <li key={i}>{s}</li>)}
             </ul>
           )}
         </div>
 
-        <div className="flex justify-end gap-2">
-          <button onClick={() => setSections([])} className="rounded-xl px-3 py-2 text-sm hover:bg-gray-50 border" type="button">Clear</button>
-          <button onClick={publish} disabled={sections.length === 0} className="rounded-xl bg-[color:var(--color-brand)] px-4 py-2 text-sm font-medium text-white disabled:opacity-60 hover:opacity-90" type="button">Publish</button>
+        <div className="flex justify-end gap-3 mt-4">
+          <button onClick={() => setSections([])} className="rounded-xl bg-white border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition" type="button">Clear</button>
+          <button onClick={publish} disabled={sections.length === 0} className="rounded-xl bg-[color:var(--color-brand)] px-5 py-2.5 text-sm font-semibold text-white shadow-md hover:bg-brand-dark transition disabled:opacity-60 disabled:cursor-not-allowed" type="button">Publish</button>
         </div>
       </div>
 
-      <PreviewCard title={sections[0] || "Current Affairs Pack"} subtitle={sections.length ? undefined : "Choose range and focus, then Generate"} body={sections.slice(1).join("\n")} tags={tags} />
+      {/* Live preview card */}
+      <div className="bg-gray-100 p-6 rounded-3xl shadow-inner">
+        <h4 className="text-xl font-semibold mb-4 text-gray-800">Preview as Post</h4>
+        <PreviewCard title={sections[0] || "Current Affairs Pack"} subtitle={sections.length ? undefined : "Choose range and focus, then Generate"} body={sections.slice(1).join("\n") || "Generate to see a preview…"} tags={tags} />
+      </div>
     </section>
   );
 }
@@ -396,16 +433,16 @@ export default function CreatePage() {
   );
 
   return (
-    <main className="min-h-screen bg-gray-50">
+    <main className="min-h-screen bg-gray-50 text-gray-900">
       <Shell right={right}>
         {/* Header + Tabs */}
-        <div className="rounded-2xl border border-gray-200 bg-white p-4">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="bg-gradient-to-br from-white to-gray-50 p-6 rounded-3xl border border-gray-200 shadow-xl mb-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-xl font-semibold">Create</h2>
-              <p className="text-sm text-gray-600">Write stories, generate exercises, and publish learning packs.</p>
+              <h2 className="text-3xl font-extrabold tracking-tight text-gray-900">Create & Share</h2>
+              <p className="text-base text-gray-600 mt-1">Write stories, generate exercises, and publish learning packs with AI.</p>
             </div>
-            <div className="sm:w-[420px]">
+            <div className="sm:w-[480px]">
               <Tabs tab={tab} onChange={setTab} />
             </div>
           </div>
@@ -416,13 +453,18 @@ export default function CreatePage() {
         {tab === "pack" && <PackGenerator />}
 
         {/* Tips */}
-        <div className="rounded-2xl border border-gray-200 bg-white p-4">
-          <h3 className="mb-2 font-medium">Tips</h3>
-          <ul className="list-disc pl-5 text-sm text-gray-600 space-y-1">
-            <li>Add a one-line hook at the start of your story to improve engagement.</li>
-            <li>Keep exercises short (5–10 items) for higher completion.</li>
-            <li>Tag your posts (<code>#Kids</code>, <code>#Quiz</code>, <code>#CurrentAffairs</code>) to improve discovery.</li>
-          </ul>
+        <div className="bg-gradient-to-r from-teal-50 to-cyan-50 p-6 rounded-3xl border border-teal-200 shadow-lg mt-6">
+          <div className="flex items-start gap-4">
+            <div className="text-3xl text-teal-600">💡</div>
+            <div>
+              <h3 className="text-lg font-bold text-teal-800">Pro Tips for Polished Posts</h3>
+              <ul className="list-disc pl-5 text-sm text-gray-700 mt-2 space-y-1">
+                <li>Add a one-line hook at the start of your story to capture attention.</li>
+                <li>Keep exercises short (5–10 items) for higher completion rates.</li>
+                <li>Use relevant tags (<code>#Kids</code>, <code>#Quiz</code>, <code>#CurrentAffairs</code>) to improve discovery.</li>
+              </ul>
+            </div>
+          </div>
         </div>
       </Shell>
     </main>
