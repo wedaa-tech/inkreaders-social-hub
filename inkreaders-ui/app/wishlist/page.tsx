@@ -1,4 +1,4 @@
-// app/lists/page.tsx
+// app/wishlist/page.tsx
 import Shell from "@/app/components/Shell";
 import { TrendingBooks } from "@/app/components/right/TrendingBooks";
 
@@ -28,6 +28,9 @@ export default function ListsPage() {
     <Shell right={right}>
       <h2 className="text-xl font-semibold">Lists</h2>
 
+      <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-6 text-center text-gray-600">
+        Create your own reading list (coming soon)
+      </div>
       <section className="rounded-2xl border border-gray-200 bg-white p-4">
         <div className="mb-3 flex items-center justify-between">
           <h3 className="font-medium">Staff Picks</h3>
@@ -48,9 +51,7 @@ export default function ListsPage() {
         </div>
       </section>
 
-      <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-6 text-center text-gray-600">
-        Create your own reading list (coming soon)
-      </div>
+
     </Shell>
   );
 }

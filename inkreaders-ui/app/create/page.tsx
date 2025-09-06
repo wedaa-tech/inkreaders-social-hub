@@ -1,10 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Shell from "@/app/components/Shell";
 import WhoToFollow from "@/app/components/right/WhoToFollow";
 import { TrendingBooks } from "@/app/components/right/TrendingBooks";
 import { useToast } from "@/app/components/ToastProvider";
+import { normalizeExercise, Exercise as NormalizedExercise } from "@/lib/normalizeExercise";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
 
 /* ----------------------------- Shared utils ----------------------------- */
 async function fetchJson(url: string, init?: RequestInit) {
@@ -59,7 +63,6 @@ function Tabs({ tab, onChange }: { tab: TabKey; onChange: (t: TabKey) => void })
 }
 
 /* ----------------------------- Preview Card ----------------------------- */
-/** Renders a compact preview that mimics your feed cards */
 function PreviewCard({ title, subtitle, body, tags }: { title: string; subtitle?: string; body: string; tags?: string[] }) {
   return (
     <article className="rounded-2xl border border-gray-200 bg-white">
@@ -100,7 +103,7 @@ function PreviewCard({ title, subtitle, body, tags }: { title: string; subtitle?
   );
 }
 
-/* ----------------------------- Story Composer ----------------------------- */
+/* --------------------------------- Story Composer --------------------------------- */
 function StoryComposer() {
   const { publishAsNote } = usePublish();
   const { push } = useToast();
@@ -167,92 +170,158 @@ function StoryComposer() {
   );
 }
 
-/* ----------------------------- Exercise Generator ----------------------------- */
-type ExerciseType = "fill" | "vocab" | "mcq";
-
+/* ----------------------------- Exercise Generator (merged) ----------------------------- */
 function ExerciseGenerator() {
-  const { publishAsNote } = usePublish();
+  const router = useRouter();
   const { push } = useToast();
 
-  const [type, setType] = useState<ExerciseType>("fill");
-  const [topic, setTopic] = useState("");
-  const [grade, setGrade] = useState("Class 2");
-  const [count, setCount] = useState(5);
-  const [items, setItems] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [exercise, setExercise] = useState<NormalizedExercise | null>(null);
+  const [language, setLanguage] = useState<"en" | "hi">("en");
 
-  function generate() {
-    const out: string[] = [];
-    for (let i = 1; i <= count; i++) {
-      if (type === "fill") {
-        out.push(`${i}. ${topic || "The ___ jumps over the ___."}`);
-      } else if (type === "vocab") {
-        out.push(`${i}. Word: ${topic || "curious"} — Use it in a sentence.`);
-      } else {
-        out.push(`${i}. ${topic || "Which planet is known as the Red Planet?"}  (a) Earth (b) Mars (c) Venus (d) Jupiter`);
-      }
+  async function handleGenerate(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget);
+
+    const body = {
+      title: form.get("title")?.toString() || "",
+      topic: form.get("topic")?.toString() || "",
+      formats: [form.get("format")?.toString() || "mcq"],
+      count: Number(form.get("count") || 5),
+      difficulty: form.get("difficulty")?.toString() || "mixed",
+      language: (form.get("language")?.toString() as "en" | "hi") || "en",
+      source: { type: "topic" },
+    };
+
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/exercises/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error("Failed to generate exercise");
+      const data = await res.json();
+      const normalized = normalizeExercise(data.exercise_set);
+      setExercise(normalized);
+      setLanguage(body.language);
+      push({ variant: "success", message: "Generated exercise preview" });
+    } catch (err) {
+      console.error(err);
+      push({ variant: "error", title: "Generate failed", message: (err as any)?.message || "Try again" });
+    } finally {
+      setLoading(false);
     }
-    setItems(out);
-    push({ variant: "success", message: "Generated preview 📝" });
   }
 
-  const header =
-    type === "fill" ? "Exercise: Fill-in-the-Blanks"
-    : type === "vocab" ? "Exercise: Vocabulary Builder"
-    : "Exercise: Quick MCQs";
-  const subtitle = `${grade}${topic ? ` • ${topic}` : ""}`;
-  const body = items.slice(0, 8).join("\n");
-  const tags = ["Exercise", "Learning"];
+  async function handleSaveAndPreview() {
+    if (!exercise) return;
 
-  async function publish() {
-    await publishAsNote(`${header} • ${subtitle}\n\n${body}\n\n#${tags[0]} #${tags[1]}`);
+    try {
+      const res = await fetch(`${API_BASE}/api/exercises/save`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ exercise_set: exercise, visibility: "private" }),
+      });
+
+      if (!res.ok) throw new Error("Failed to save exercise");
+      const data = await res.json();
+      const newId = data.id;
+
+      router.push(`/exercises/${newId}/preview`);
+    } catch (err) {
+      console.error(err);
+      push({ variant: "error", title: "Save failed", message: (err as any)?.message || "Could not save exercise" });
+    }
   }
 
   return (
     <section className="space-y-3">
       <div className="rounded-2xl border border-gray-200 bg-white p-4 space-y-3">
         <h3 className="font-medium">Generate an Exercise</h3>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <select value={type} onChange={(e) => setType(e.target.value as ExerciseType)} className="rounded-xl border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-[color:var(--color-brand)]">
-            <option value="fill">Fill in the Blanks</option>
-            <option value="vocab">Vocabulary</option>
-            <option value="mcq">MCQ Quiz</option>
+        <form onSubmit={handleGenerate} className="grid gap-3 sm:grid-cols-4">
+          <input name="title" placeholder="Title (optional)" className="rounded-xl border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-[color:var(--color-brand)] col-span-2" />
+          <input name="topic" placeholder="Topic (e.g., Solar System)" required className="rounded-xl border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-[color:var(--color-brand)]" />
+          <select name="format" defaultValue="mcq" className="rounded-xl border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-[color:var(--color-brand)]">
+            <option value="mcq">Multiple Choice</option>
+            <option value="true_false">True/False</option>
+            <option value="fill_blank">Fill in the Blank</option>
+            <option value="match">Matching</option>
           </select>
-          <input value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="Topic (e.g., Solar System)" className="rounded-xl border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-[color:var(--color-brand)]" />
-          <select value={grade} onChange={(e) => setGrade(e.target.value)} className="rounded-xl border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-[color:var(--color-brand)]">
-            <option>Class 1</option><option>Class 2</option><option>Class 3</option>
-            <option>Middle School</option><option>High School</option>
-          </select>
-        </div>
-        <div className="flex items-center gap-3">
-          <label className="text-sm text-gray-600">Items</label>
-          <input type="number" min={3} max={15} value={count} onChange={(e) => setCount(parseInt(e.target.value || "5", 10))} className="w-20 rounded-xl border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-[color:var(--color-brand)]" />
-          <button onClick={generate} className="rounded-xl border px-3 py-2 text-sm hover:bg-gray-50" type="button">Generate (stub)</button>
-        </div>
 
-        {/* Preview list (raw) */}
-        <div className="rounded-xl border p-3">
-          {items.length === 0 ? (
-            <div className="text-sm text-gray-500">No items yet — click Generate.</div>
-          ) : (
-            <ol className="list-decimal space-y-1 pl-5 text-sm">
-              {items.map((it, i) => <li key={i}>{it}</li>)}
-            </ol>
-          )}
-        </div>
+          <div className="sm:col-span-1">
+            <label className="text-sm text-gray-600">Count</label>
+            <input name="count" type="number" defaultValue={5} min={1} max={20} className="mt-1 w-full rounded-lg border px-3 py-2" />
+          </div>
 
-        <div className="flex justify-end gap-2">
-          <button onClick={() => setItems([])} className="rounded-xl px-3 py-2 text-sm hover:bg-gray-50 border" type="button">Clear</button>
-          <button onClick={publish} disabled={items.length === 0} className="rounded-xl bg-[color:var(--color-brand)] px-4 py-2 text-sm font-medium text-white disabled:opacity-60 hover:opacity-90" type="button">Publish</button>
-        </div>
+          <div>
+            <label className="text-sm text-gray-600">Difficulty</label>
+            <select name="difficulty" defaultValue="mixed" className="mt-1 w-full rounded-lg border px-3 py-2">
+              <option value="easy">Easy</option>
+              <option value="medium">Medium</option>
+              <option value="hard">Hard</option>
+              <option value="mixed">Mixed</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="text-sm text-gray-600">Language</label>
+            <select name="language" defaultValue="en" className="mt-1 w-full rounded-lg border px-3 py-2">
+              <option value="en">English</option>
+              <option value="hi">Hindi</option>
+            </select>
+          </div>
+
+          <div className="sm:col-span-4 flex gap-2 mt-2">
+            <button type="submit" disabled={loading} className="rounded-xl bg-[color:var(--color-brand)] px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+              {loading ? "Generating…" : "Generate"}
+            </button>
+            <button type="button" onClick={() => { setExercise(null); push({ variant: "success", message: "Cleared" }); }} className="rounded-xl px-3 py-2 text-sm hover:bg-gray-50 border">Clear</button>
+            <button type="button" onClick={handleSaveAndPreview} disabled={!exercise} className="ml-auto rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50">
+              Save & Continue →
+            </button>
+          </div>
+        </form>
+
+        {/* Preview */}
+        {exercise ? (
+          <div className="mt-3 rounded-lg border bg-gray-50 p-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-semibold">{exercise.title || "(untitled)"}</div>
+                <div className="text-sm text-gray-600">{exercise.format?.toUpperCase()} • {exercise.difficulty}</div>
+              </div>
+              <div className="text-sm text-gray-500">Language: {language}</div>
+            </div>
+
+            <ul className="space-y-3 mt-3">
+              {exercise.questions?.map((q, idx) => (
+                <li key={q.id} className="rounded-lg border bg-white p-3">
+                  <p className="font-medium">Q{idx + 1}. {q.prompt}</p>
+                  {q.options && q.options.length > 0 && (
+                    <ul className="ml-4 list-disc text-sm text-gray-600">
+                      {q.options.map((o, i) => <li key={i}>{o}</li>)}
+                    </ul>
+                  )}
+                  <p className="text-sm text-green-700 mt-1">Answer: {Array.isArray(q.correctAnswer) ? q.correctAnswer.join(", ") : typeof q.correctAnswer === "object" ? JSON.stringify(q.correctAnswer) : String(q.correctAnswer)}</p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <div className="mt-3 text-sm text-gray-500">No preview yet — generate to see the exercise.</div>
+        )}
       </div>
 
-      {/* Live preview */}
-      <PreviewCard title={header} subtitle={subtitle} body={body || "Generate to see a preview…"} tags={tags} />
+      {/* Live preview card */}
+      <PreviewCard title={exercise ? (exercise.title || "Exercise Preview") : "Exercise Preview"} subtitle={exercise ? `${exercise.format?.toUpperCase()} • ${exercise.difficulty}` : "Provide topic and generate"} body={(exercise ? exercise.questions.slice(0, 6).map((q, i) => `${i+1}. ${q.prompt}`).join("\n") : "Generate to see a preview…")} tags={["Exercise", "Learning"]} />
     </section>
   );
 }
 
-/* ----------------------------- Current Affairs Pack ----------------------------- */
+/* ----------------------------- Pack Generator (unchanged) ----------------------------- */
 function PackGenerator() {
   const { publishAsNote } = usePublish();
   const { push } = useToast();
@@ -310,7 +379,6 @@ function PackGenerator() {
         </div>
       </div>
 
-      {/* Live preview */}
       <PreviewCard title={sections[0] || "Current Affairs Pack"} subtitle={sections.length ? undefined : "Choose range and focus, then Generate"} body={sections.slice(1).join("\n")} tags={tags} />
     </section>
   );

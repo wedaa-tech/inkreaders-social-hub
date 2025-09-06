@@ -44,7 +44,7 @@ export default function LeftSidebar() {
 const NAV = [
   { label: "Home", icon: "🏠", href: "/" },
   { label: "Discover", icon: "🔎", href: "/discover" },
-  { label: "Lists", icon: "📚", href: "/lists" },
+  { label: "Wishlist", icon: "📚", href: "/wishlist" },
   { label: "Create", icon: "✍️", href: "/create" },
   { label: "Exercises", icon: "📝", href: "/exercises/mine" }, // 👈 added
   { label: "Notifications", icon: "🔔", href: "/notifications" },
