@@ -191,6 +191,46 @@ func (c *OpenAIClient) chat(ctx context.Context, system string, user string) ([]
 	return []byte(out.Choices[0].Message.Content), nil
 }
 
+
+// Explain generates a concise explanation for the given question prompt and answer.
+// answer can be string, bool, or any JSON value — we stringify for safety.
+func (c *OpenAIClient) Explain(ctx context.Context, questionID string, prompt string, answer any) (string, error) {
+	// Build a focused system prompt that encourages a clear explanation suitable for students.
+	sys := `You are a friendly, concise teacher who explains answers for learners preparing for competitive exams.
+Be brief but precise. Use short bullet points or 2-3 sentences. Make steps clear if applicable.
+OUTPUT: plain text explanation only (no JSON, no markdown).`
+
+	// Build the user prompt including the question/context and the answer
+	var ansStr string
+	switch v := answer.(type) {
+	case nil:
+		ansStr = ""
+	case string:
+		ansStr = v
+	default:
+		// try to marshal non-string answers to JSON-ish string
+		b, _ := json.Marshal(v)
+		ansStr = string(b)
+	}
+
+	user := "Question:\n" + prompt + "\n\nAnswer:\n" + ansStr + "\n\nExplain why this answer is correct and provide brief steps or a short rationale."
+
+	// call chat helper (re-uses your existing chat code)
+	raw, err := c.chat(ctx, sys, user)
+	if err != nil {
+		return "", err
+	}
+
+	// chat returns raw bytes from the model response; we trim whitespace
+	out := strings.TrimSpace(string(raw))
+	// Optional: if model returns JSON or extraneous content, try to trim to first paragraph
+	if out == "" {
+		return "", errors.New("empty explanation returned by model")
+	}
+	return out, nil
+}
+
+
 // --------------- Wire <-> DB mapping ---------------
 
 type wireQuestion struct {

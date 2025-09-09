@@ -3,28 +3,20 @@
 
 import React, { useState } from "react";
 import Shell from "@/app/components/Shell";
-import WhoToFollow from "@/app/components/right/WhoToFollow";
-import { TrendingBooks } from "@/app/components/right/TrendingBooks";
 import CreateTabs, { TabKey } from "@/app/create/components/CreateTabs";
 import StoryComposer from "@/app/create/components/StoryComposer";
 import ExerciseGenerator from "@/app/create/components/ExerciseGenerator";
-import PackGenerator from "@/app/create/components/PackGenerator";
+import PackBuilder from "@/app/create/pack/PackBuilder";
 
 export default function CreatePage() {
   const [tab, setTab] = useState<TabKey>("story");
 
-  const right = (
-    <>
-      <WhoToFollow />
-      <TrendingBooks />
-    </>
-  );
-
   return (
     <main className="min-h-screen bg-gray-50 text-gray-900">
-      <Shell right={right}>
+      {/* Expand center to occupy center + right space while keeping left sidebar */}
+      <Shell expandCenter>
         <div className="bg-gradient-to-br from-white to-gray-50 p-6 rounded-3xl border border-gray-200 shadow-xl mb-6">
-          <div className="max-w-4xl mx-auto text-center">
+          <div className="max-w-6xl mx-auto text-center">
             <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-gray-900">
               Create & Share
             </h2>
@@ -47,7 +39,7 @@ export default function CreatePage() {
 
         {tab === "story" && <StoryComposer />}
         {tab === "exercise" && <ExerciseGenerator />}
-        {tab === "pack" && <PackGenerator />}
+        {tab === "pack" && <PackBuilder />}
 
         <div className="bg-gradient-to-r from-teal-50 to-cyan-50 p-6 rounded-3xl border border-teal-200 shadow-lg mt-6">
           <div className="flex items-start gap-4">

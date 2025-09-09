@@ -79,6 +79,8 @@ func NewRouter(agent *xrpc.Client, did string, store *db.Store, aiClient ai.Clie
 
 	// --- Exercises ---
 	r.Post("/api/exercises/generate", auth.WithSessionOptional(h.ExercisesGenerate))
+	// AI explanation for a single question (non-persistent). Session optional.
+	r.Post("/api/exercises/explain", auth.WithSessionOptional(h.ExercisesExplain))
 	r.Post("/api/exercises/save", auth.WithSession(h.ExercisesSave))
 	r.Get("/api/exercises/mine", auth.WithSession(h.ExercisesMine))
 	r.Get("/api/exercises/{id}", auth.WithSession(h.ExercisesGet))

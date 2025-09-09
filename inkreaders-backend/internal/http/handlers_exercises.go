@@ -9,6 +9,7 @@ import (
 	"io"
 	"bytes"       
 	"path/filepath"
+	"strings"
 
 
 	"github.com/google/uuid"
@@ -422,6 +423,38 @@ func (h *Handlers) ExercisesUpload(w http.ResponseWriter, r *http.Request, s *Se
 		"chars":   fileRow.Chars,
 	})
 }
+
+// === Explain a question (AI) ===
+func (h *Handlers) ExercisesExplain(w http.ResponseWriter, r *http.Request, s *SessionData) {
+	type reqBody struct {
+		QuestionID string      `json:"question_id"`
+		Prompt     string      `json:"prompt"`
+		Answer     interface{} `json:"answer,omitempty"`
+	}
+	var req reqBody
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		BadRequest(w, "invalid_json")
+		return
+	}
+	// Basic validation
+	if strings.TrimSpace(req.Prompt) == "" {
+		BadRequest(w, "prompt_required")
+		return
+	}
+
+	// Call AI Explain (non-persistent)
+	expl, err := h.AI.Explain(r.Context(), req.QuestionID, req.Prompt, req.Answer)
+	if err != nil {
+		// Return 500 with error message for dev; in prod you might mask it
+		ServerError(w, err)
+		return
+	}
+
+	WriteJSON(w, http.StatusOK, map[string]any{
+		"explanation": expl,
+	})
+}
+
 
 // Helpers
 func generateStorageKey(userID, name string) string {

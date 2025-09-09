@@ -24,6 +24,8 @@ type GenerateOut struct {
 type Client interface {
 	Generate(ctx context.Context, p GenerateParams) (GenerateOut, error)
 	Remix(ctx context.Context, p RemixParams) (db.ExerciseSet, error)
+	Explain(ctx context.Context, questionID string, prompt string, answer any) (string, error)
+
 }
 
 type RemixParams struct {

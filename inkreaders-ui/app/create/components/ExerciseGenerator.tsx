@@ -1,17 +1,22 @@
 // app/create/components/ExerciseGenerator.tsx
+"use client";
+
 import React, { useState } from "react";
 import { FaSpinner } from "@/app/create/components/icons";
 import PreviewCard from "@/app/create/components/PreviewCard";
-import { normalizeExercise, Exercise as NormalizedExercise } from "@/lib/normalizeExercise"; // keep original lib
+import { normalizeExercise, Exercise as NormalizedExercise } from "@/lib/normalizeExercise";
 import { useToast } from "@/app/components/ToastProvider";
 import { API_BASE } from "@/app/create/lib/api";
+import QuestionPreview from "./QuestionPreview";
 
 export default function ExerciseGenerator() {
   const { push } = useToast();
   const [loading, setLoading] = useState(false);
   const [exercise, setExercise] = useState<NormalizedExercise | null>(null);
   const [language, setLanguage] = useState<"en" | "hi">("en");
-  const router = (typeof window !== "undefined") ? (window as any).router : null; // keep usage minimal
+  // keep previous router fallback; in app-dir you usually use useRouter from next/navigation
+  // but to keep your original minimal change we keep the window navigation
+  // const router = useRouter();
 
   async function handleGenerate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -68,7 +73,6 @@ export default function ExerciseGenerator() {
 
   return (
     <section className="space-y-6">
-      {/* UI mostly preserved from original; omitted here for brevity */}
       <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-md">
         <h3 className="text-xl font-semibold text-gray-800 mb-4">Generate an Exercise</h3>
         <form onSubmit={handleGenerate} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -130,17 +134,7 @@ export default function ExerciseGenerator() {
 
             <ul className="space-y-4 mt-3">
               {exercise.questions?.map((q, idx) => (
-                <li key={q.id} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-                  <p className="font-medium text-gray-800">Q{idx + 1}. {q.prompt}</p>
-                  {q.options && q.options.length > 0 && (
-                    <ul className="ml-4 list-disc space-y-1 mt-2 text-sm text-gray-600">
-                      {q.options.map((o, i) => <li key={i}>{o}</li>)}
-                    </ul>
-                  )}
-                  <div className="flex items-center text-sm text-green-700 mt-2 font-medium">
-                    <span className="mr-1 text-base text-green-600">✔</span> Answer: {Array.isArray(q.correctAnswer) ? q.correctAnswer.join(", ") : typeof q.correctAnswer === "object" ? JSON.stringify(q.correctAnswer) : String(q.correctAnswer)}
-                  </div>
-                </li>
+                <QuestionPreview key={q.id} q={q} index={idx} />
               ))}
             </ul>
           </div>

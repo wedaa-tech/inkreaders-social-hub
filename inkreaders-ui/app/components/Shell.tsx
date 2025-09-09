@@ -4,16 +4,38 @@
 import { ReactNode } from "react";
 import LeftSidebar from "./LeftSidebar";
 
-export default function Shell({
-  children,
-  right,
-}: {
-  children: ReactNode;   // center column
-  right?: ReactNode;     // optional right rail
-}) {
+type ShellProps = {
+  children: ReactNode;           // center column content
+  right?: ReactNode;             // optional right rail
+  /**
+   * If true, the outer container uses full viewport width (no max-width).
+   * Useful for feed / home where you want full-bleed content while retaining left sidebar.
+   */
+  fullWidth?: boolean;
+  /**
+   * If true AND `right` is not provided, the center content will expand to take the
+   * space normally reserved for the right rail (i.e. center spans middle + right columns).
+   * Useful for Create page where you want the middle + right to be a single wide canvas.
+   */
+  expandCenter?: boolean;
+};
+
+export default function Shell({ children, right, fullWidth = false, expandCenter = false }: ShellProps) {
+  // outer wrapper classes — either constrained mx-auto max-w-7xl or full width
+  const containerClass = fullWidth ? "mx-0 px-3 sm:px-4 w-full" : "mx-auto max-w-7xl px-3 sm:px-4";
+
+  /**
+   * Grid template:
+   * - default: 2 cols at lg (left + center)
+   * - xl: 3 cols (left + center + right)
+   *
+   * We'll keep the grid template fixed, but if expandCenter is true and right is not provided,
+   * we'll let the center <main> span 2 columns on xl so it occupies middle + right area.
+   */
+  const mainColClass = right ? "min-w-0 space-y-4 border-r border-gray-200" : (expandCenter ? "min-w-0 space-y-4 border-r border-gray-200 xl:col-span-2" : "min-w-0 space-y-4 border-r border-gray-200");
+
   return (
-    <div className="mx-auto max-w-7xl px-3 sm:px-4">
-      {/* 1 col on mobile, 2 cols >=lg, 3 cols >=xl */}
+    <div className={containerClass}>
       <div
         className="
           grid gap-0
@@ -30,7 +52,7 @@ export default function Shell({
         </aside>
 
         {/* Center */}
-        <main className="min-w-0 space-y-4 border-r border-gray-200">
+        <main className={mainColClass}>
           {children}
         </main>
 
