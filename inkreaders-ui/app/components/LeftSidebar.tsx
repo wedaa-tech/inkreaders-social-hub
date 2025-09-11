@@ -46,6 +46,7 @@ const NAV = [
   { label: "Discover", icon: "🔎", href: "/discover" },
   { label: "Wishlist", icon: "📚", href: "/wishlist" },
   { label: "Create", icon: "✍️", href: "/create" },
+  { label: "Notebook", icon: "📒", href: "/notebook" }, // 👈 new entry
   { label: "Exercises", icon: "📝", href: "/exercises/mine" }, // 👈 added
   { label: "Notifications", icon: "🔔", href: "/notifications" },
   { label: "Profile", icon: "👤", href: me ? `/u/${me.handle}` : "/settings" },
