@@ -4,7 +4,7 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
-import { Response } from "./NotebookCanvas";
+import { Response } from "./TopicCanvas";
 
 export default function SectionCard({
   response,
