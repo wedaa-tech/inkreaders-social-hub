@@ -89,5 +89,24 @@ func NewRouter(agent *xrpc.Client, did string, store *db.Store, aiClient ai.Clie
 	r.Post("/api/exercises/{id}/remix", auth.WithSession(h.ExercisesRemix))
 	r.Post("/api/exercises/uploads", auth.WithSession(h.ExercisesUpload))
 
+
+	// --- Notebook (Topics) ---
+	r.Get("/api/topics", auth.WithSession(h.ListTopics))
+	r.Post("/api/topics", auth.WithSession(h.CreateTopic))
+	r.Get("/api/topics/{id}", auth.WithSession(h.GetTopic))
+	r.Patch("/api/topics/{id}", auth.WithSession(h.UpdateTopic))
+
+	// Responses
+	r.Get("/api/topics/{topic_id}/responses", auth.WithSessionOptional(h.ListResponses))
+	r.Post("/api/topics/{topic_id}/responses", auth.WithSession(h.CreateResponse))
+	r.Get("/api/responses/{id}", auth.WithSessionOptional(h.GetResponse))
+	r.Patch("/api/responses/{id}", auth.WithSession(h.UpdateResponse))
+
+	// Responses version
+	r.Route("/api/responses", func(r chi.Router) {
+    r.Get("/{id}/versions", auth.WithSession(h.ListResponseVersions))
+    r.Get("/versions/{version_id}", auth.WithSession(h.GetResponseVersion))
+	})
+
 	return r
 }

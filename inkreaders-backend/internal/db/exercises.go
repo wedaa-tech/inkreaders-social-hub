@@ -5,23 +5,25 @@ import (
 	"encoding/json"
 	"errors"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 var ErrForbidden = errors.New("forbidden")
 
-// ---------- Types (your existing ones kept) ----------
+// ---------- Types ----------
 
 type ExerciseSource struct {
-	Type   string  `json:"type"`
-	Topic  string  `json:"topic,omitempty"`
-	FileID *string `json:"file_id,omitempty"`
+	Type   string     `json:"type"`
+	Topic  string     `json:"topic,omitempty"`
+	FileID *uuid.UUID `json:"file_id,omitempty"`
 }
 
 type ExerciseMeta struct {
 	Difficulty string         `json:"difficulty"`
 	Language   string         `json:"language"`
 	Source     ExerciseSource `json:"source"`
-	SeedSetID  *string        `json:"seed_set_id,omitempty"`
+	SeedSetID  *uuid.UUID     `json:"seed_set_id,omitempty"`
 }
 
 type Question struct {
@@ -35,19 +37,19 @@ type Question struct {
 }
 
 type ExerciseSet struct {
-	ID         string       `json:"id"`
-	UserID     string       `json:"user_id"`
-	Title      string       `json:"title"`
-	Format     string       `json:"format"`
-	Questions  []Question   `json:"questions"`
-	Meta       ExerciseMeta `json:"meta"`
-	Visibility string       `json:"visibility"`
-	ParentSetID *string     `json:"parent_set_id,omitempty"`
-	ATURI      *string      `json:"at_uri,omitempty"`
-	CID        *string      `json:"cid,omitempty"`
-	FeedURI    *string      `json:"feed_uri,omitempty"`
-	CreatedAt  time.Time    `json:"created_at"`
-	UpdatedAt  time.Time    `json:"updated_at"`
+	ID          string       `json:"id"`
+	UserID      uuid.UUID    `json:"user_id"`
+	Title       string       `json:"title"`
+	Format      string       `json:"format"`
+	Questions   []Question   `json:"questions"`
+	Meta        ExerciseMeta `json:"meta"`
+	Visibility  string       `json:"visibility"`
+	ParentSetID *uuid.UUID   `json:"parent_set_id,omitempty"`
+	ATURI       *string      `json:"at_uri,omitempty"`
+	CID         *string      `json:"cid,omitempty"`
+	FeedURI     *string      `json:"feed_uri,omitempty"`
+	CreatedAt   time.Time    `json:"created_at"`
+	UpdatedAt   time.Time    `json:"updated_at"`
 }
 
 type ExercisePatch struct {
@@ -65,7 +67,6 @@ func toJSON(v any) []byte {
 // ------------------ CRUD ------------------
 
 func (s *Store) InsertExerciseSet(ctx context.Context, set *ExerciseSet) error {
-	// Upsert semantics (insert if new; update if exists) to keep things simple.
 	_, err := s.Pool.Exec(ctx, `
 		INSERT INTO exercise_sets
 			(id, user_id, title, format, questions, meta, visibility, parent_set_id, at_uri, cid, feed_uri, created_at, updated_at)
@@ -87,7 +88,7 @@ func (s *Store) InsertExerciseSet(ctx context.Context, set *ExerciseSet) error {
 	return err
 }
 
-func (s *Store) GetExerciseSet(ctx context.Context, id string, owner string) (*ExerciseSet, error) {
+func (s *Store) GetExerciseSet(ctx context.Context, id string, owner uuid.UUID) (*ExerciseSet, error) {
 	var e ExerciseSet
 	var qjson, mjson []byte
 
@@ -113,7 +114,7 @@ func (s *Store) GetExerciseSet(ctx context.Context, id string, owner string) (*E
 	return &e, nil
 }
 
-func (s *Store) UpdateExerciseSet(ctx context.Context, id, owner string, p *ExercisePatch) error {
+func (s *Store) UpdateExerciseSet(ctx context.Context, id string, owner uuid.UUID, p *ExercisePatch) error {
 	// load existing
 	existing, err := s.GetExerciseSet(ctx, id, owner)
 	if err != nil {
@@ -140,7 +141,7 @@ func (s *Store) UpdateExerciseSet(ctx context.Context, id, owner string, p *Exer
 	return s.InsertExerciseSet(ctx, existing)
 }
 
-func (s *Store) MarkPublished(ctx context.Context, id, owner, atURI, cid, feedURI string) error {
+func (s *Store) MarkPublished(ctx context.Context, id string, owner uuid.UUID, atURI, cid, feedURI string) error {
 	_, err := s.Pool.Exec(ctx, `
 		UPDATE exercise_sets
 		SET at_uri=$1, cid=$2, feed_uri=$3, updated_at=now()
@@ -149,7 +150,7 @@ func (s *Store) MarkPublished(ctx context.Context, id, owner, atURI, cid, feedUR
 	return err
 }
 
-func (s *Store) ListExerciseSets(ctx context.Context, owner, cursor string, limit int, visibility string) ([]ExerciseSet, string, error) {
+func (s *Store) ListExerciseSets(ctx context.Context, owner uuid.UUID, cursor string, limit int, visibility string) ([]ExerciseSet, string, error) {
 	if limit <= 0 {
 		limit = 20
 	}
@@ -180,23 +181,21 @@ func (s *Store) ListExerciseSets(ctx context.Context, owner, cursor string, limi
 		if err := json.Unmarshal(mjson, &e.Meta); err != nil {
 			return nil, "", err
 		}
-		// We intentionally do NOT load big 'questions' blob for Mine list
 		out = append(out, e)
 	}
 
 	return out, "", nil
 }
 
-
 // ------------------ File Handling ------------------
 
 type File struct {
-	ID         string `json:"id"`
-	UserID     string `json:"user_id"`
-	Mime       string `json:"mime"`
-	StorageKey string `json:"storage_key"`
-	Pages      int    `json:"pages"`
-	Chars      int    `json:"chars"`
+	ID         string    `json:"id"`
+	UserID     uuid.UUID `json:"user_id"`
+	Mime       string    `json:"mime"`
+	StorageKey string    `json:"storage_key"`
+	Pages      int       `json:"pages"`
+	Chars      int       `json:"chars"`
 }
 
 func (s *Store) InsertFile(ctx context.Context, f *File) error {
@@ -207,7 +206,7 @@ func (s *Store) InsertFile(ctx context.Context, f *File) error {
 	return err
 }
 
-func (s *Store) GetFile(ctx context.Context, id, owner string) (File, error) {
+func (s *Store) GetFile(ctx context.Context, id string, owner uuid.UUID) (File, error) {
 	var f File
 	err := s.Pool.QueryRow(ctx, `
 		SELECT id, user_id, mime, storage_key, pages, chars

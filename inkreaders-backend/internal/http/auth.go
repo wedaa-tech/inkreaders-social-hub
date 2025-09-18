@@ -15,7 +15,7 @@ import (
 )
 
 type SessionData struct {
-	AccountID  string
+	AccountID uuid.UUID
 	DID        string
 	Handle     string
 	PDSBase    string

@@ -75,7 +75,7 @@ func (h *Handlers) ExercisesGenerate(w http.ResponseWriter, r *http.Request, s *
 	if err != nil {
 		set := db.ExerciseSet{
 			ID:     uuid.New().String(),
-			UserID: "",
+			UserID: uuid.Nil,
 			Title:  coalesce(req.Title, "Untitled Exercise"),
 			Format: "mcq",
 			Questions: []db.Question{},
@@ -86,7 +86,7 @@ func (h *Handlers) ExercisesGenerate(w http.ResponseWriter, r *http.Request, s *
 					Type:  req.Source.Type,
 					Topic: req.Topic,
 				},
-				SeedSetID: req.SeedSetID,
+				SeedSetID: parseUUIDPtr(req.SeedSetID),
 			},
 			Visibility: "private",
 			CreatedAt:  time.Now(),
@@ -100,8 +100,11 @@ func (h *Handlers) ExercisesGenerate(w http.ResponseWriter, r *http.Request, s *
 	}
 
 	userID := s.AccountID
-	if userID == "" {
-		userID = h.did // fallback
+	if userID == uuid.Nil {
+		// Optional fallback — only if h.did is a UUID string
+		if parsed, err := uuid.Parse(h.did); err == nil {
+			userID = parsed
+		}
 	}
 
 	set := db.ExerciseSet{
@@ -118,13 +121,23 @@ func (h *Handlers) ExercisesGenerate(w http.ResponseWriter, r *http.Request, s *
 				Type:  req.Source.Type,
 				Topic: req.Topic,
 			},
-			SeedSetID: req.SeedSetID,
+			SeedSetID: parseUUIDPtr(req.SeedSetID),
 		},
 		Visibility: "private",
 		CreatedAt:  time.Now(),
 	}
 
 	WriteJSON(w, http.StatusOK, map[string]any{"exercise_set": set})
+}
+
+func parseUUIDPtr(s *string) *uuid.UUID {
+    if s == nil {
+        return nil
+    }
+    if u, err := uuid.Parse(*s); err == nil {
+        return &u
+    }
+    return nil
 }
 
 
@@ -371,7 +384,9 @@ func (h *Handlers) ExercisesRemix(w http.ResponseWriter, r *http.Request, s *Ses
 		return
 	}
 
-	derived.ParentSetID = &parent.ID
+	if u, err := uuid.Parse(parent.ID); err == nil {
+		derived.ParentSetID = &u
+	}
 	derived.UserID = s.AccountID
 	if err := h.DB.InsertExerciseSet(r.Context(), &derived); err != nil {
 		ServerError(w, err)
@@ -400,7 +415,7 @@ func (h *Handlers) ExercisesUpload(w http.ResponseWriter, r *http.Request, s *Se
 	}
 
 	mime := DetectMIME(header.Filename, buf)
-	key := h.Storage.Put(r.Context(), generateStorageKey(s.AccountID, header.Filename), buf)
+	key := h.Storage.Put(r.Context(), generateStorageKey(s.AccountID.String(), header.Filename), buf)
 
 	text := h.Extract.PlainText(mime, buf)
 	fileRow := db.File{
@@ -457,11 +472,12 @@ func (h *Handlers) ExercisesExplain(w http.ResponseWriter, r *http.Request, s *S
 
 
 // Helpers
-func generateStorageKey(userID, name string) string {
+func generateStorageKey(userID string, name string) string {
 	ts := time.Now().UTC().Format("20060102T150405")
 	ext := filepath.Ext(name)
 	return "uploads/" + userID + "/" + ts + ext
 }
+
 
 // normalizeFormat maps loose values to canonical DB format values.
 func normalizeFormat(f string) string {
