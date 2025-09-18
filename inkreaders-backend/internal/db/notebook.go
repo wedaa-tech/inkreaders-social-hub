@@ -25,17 +25,18 @@ type Topic struct {
 }
 
 type Response struct {
-	ID               uuid.UUID              `json:"id"`
-	TopicID          uuid.UUID              `json:"topicId"`
-	ParentResponseID *uuid.UUID             `json:"parentResponseId,omitempty"`
-	AuthorType       string                 `json:"authorType"`
-	Content          string                 `json:"content"`
-	ContentHTML      string                 `json:"contentHtml"`
-	Raw              map[string]any         `json:"raw"`
-	CreatedAt        time.Time              `json:"createdAt"`
-	UpdatedAt        time.Time              `json:"updatedAt"`
-	Status           string                 `json:"status"`
+	ID               uuid.UUID             `json:"id"`
+	TopicID          uuid.UUID             `json:"topicId"`
+	ParentResponseID *uuid.UUID            `json:"parentResponseId,omitempty"`
+	AuthorType       string                `json:"authorType"`
+	Content          string                `json:"content"`
+	ContentHTML      string                `json:"contentHtml"`
+	Raw              map[string]any        `json:"raw"`
+	CreatedAt        time.Time             `json:"createdAt"`
+	UpdatedAt        time.Time             `json:"updatedAt"`
+	Status           string                `json:"status"`
 }
+
 
 type ResponseVersion struct {
 	ID          uuid.UUID              `json:"id"`
@@ -201,37 +202,60 @@ func (s *Store) UpdateTopic(ctx context.Context, id uuid.UUID, title, descriptio
 }
 
 // --- Create response ---
-func (s *Store) CreateResponse(ctx context.Context, topicID uuid.UUID, parentID *uuid.UUID, authorType, content, contentHTML string, raw map[string]any) (Response, error) {
-	var r Response
+func (s *Store) CreateResponse(
+	ctx context.Context,
+	topicID uuid.UUID,
+	parentResponseID *uuid.UUID,
+	authorType, content, contentHTML string,
+	raw map[string]any,
+) (Response, error) {
+	var out Response
 	rawB, _ := json.Marshal(raw)
 
 	err := s.Pool.QueryRow(ctx, `
-		INSERT INTO responses (topic_id, parent_response_id, author_type, content, content_html, raw, status)
-		VALUES ($1,$2,$3,$4,$5,$6,'pending')
+		INSERT INTO responses (topic_id, parent_response_id, author_type, content, content_html, raw)
+		VALUES ($1,$2,$3,$4,$5,$6)
 		RETURNING id, topic_id, parent_response_id, author_type, content, content_html, raw, created_at, updated_at, status
-	`, topicID, parentID, authorType, content, contentHTML, rawB).
-		Scan(&r.ID, &r.TopicID, &r.ParentResponseID, &r.AuthorType, &r.Content, &r.ContentHTML, &rawB, &r.CreatedAt, &r.UpdatedAt, &r.Status)
+	`,
+		topicID, parentResponseID, authorType, content, contentHTML, rawB,
+	).Scan(
+		&out.ID,
+		&out.TopicID,
+		&out.ParentResponseID,
+		&out.AuthorType,
+		&out.Content,
+		&out.ContentHTML,
+		&out.Raw,
+		&out.CreatedAt,
+		&out.UpdatedAt,
+		&out.Status,
+	)
 
-	if err == nil {
-		_ = json.Unmarshal(rawB, &r.Raw)
-	}
-	return r, err
+	return out, err
 }
+
 
 func (s *Store) GetResponse(ctx context.Context, id uuid.UUID) (Response, error) {
 	var r Response
-	var rawRaw []byte
 	err := s.Pool.QueryRow(ctx, `
 		SELECT id, topic_id, parent_response_id, author_type, content, content_html, raw, created_at, updated_at, status
-		FROM responses WHERE id=$1
-	`, id).
-		Scan(&r.ID, &r.TopicID, &r.ParentResponseID, &r.AuthorType, &r.Content, &r.ContentHTML, &rawRaw, &r.CreatedAt, &r.UpdatedAt, &r.Status)
-	if err != nil {
-		return r, err
-	}
-	_ = json.Unmarshal(rawRaw, &r.Raw)
-	return r, nil
+		FROM responses
+		WHERE id=$1
+	`, id).Scan(
+		&r.ID,
+		&r.TopicID,
+		&r.ParentResponseID,
+		&r.AuthorType,
+		&r.Content,
+		&r.ContentHTML,
+		&r.Raw,
+		&r.CreatedAt,
+		&r.UpdatedAt,
+		&r.Status,
+	)
+	return r, err
 }
+
 
 func (s *Store) ListResponsesByTopic(ctx context.Context, topicID uuid.UUID, limit int, cursor time.Time) ([]Response, error) {
 	rows, err := s.Pool.Query(ctx, `
@@ -249,25 +273,54 @@ func (s *Store) ListResponsesByTopic(ctx context.Context, topicID uuid.UUID, lim
 	var out []Response
 	for rows.Next() {
 		var r Response
-		var rawRaw []byte
-		if err := rows.Scan(&r.ID, &r.TopicID, &r.ParentResponseID, &r.AuthorType, &r.Content, &r.ContentHTML, &rawRaw, &r.CreatedAt, &r.UpdatedAt, &r.Status); err != nil {
+		if err := rows.Scan(
+			&r.ID,
+			&r.TopicID,
+			&r.ParentResponseID,
+			&r.AuthorType,
+			&r.Content,
+			&r.ContentHTML,
+			&r.Raw,
+			&r.CreatedAt,
+			&r.UpdatedAt,
+			&r.Status,
+		); err != nil {
 			return nil, err
 		}
-		_ = json.Unmarshal(rawRaw, &r.Raw)
 		out = append(out, r)
 	}
 	return out, rows.Err()
 }
 
+
 func (s *Store) UpdateResponse(ctx context.Context, id uuid.UUID, content, contentHTML string, raw map[string]any) error {
 	rawB, _ := json.Marshal(raw)
+
 	_, err := s.Pool.Exec(ctx, `
 		UPDATE responses
-		SET content=$2, content_html=$3, raw=$4, updated_at=now()
+		SET content=$2,
+		    content_html=$3,
+		    raw=$4,
+		    status='complete',
+		    updated_at=now()
 		WHERE id=$1
 	`, id, content, contentHTML, rawB)
 	return err
 }
+
+func (s *Store) FailResponse(ctx context.Context, id uuid.UUID, errMsg string) error {
+	_, err := s.Pool.Exec(ctx, `
+		UPDATE responses
+		SET content=$2,
+		    content_html=$2,
+		    raw=jsonb_build_object('error', $3),
+		    status='failed',
+		    updated_at=now()
+		WHERE id=$1
+	`, id, "⚠️ Failed to generate response", errMsg)
+	return err
+}
+
 
 func (s *Store) ListResponseVersions(ctx context.Context, responseID uuid.UUID, limit int) ([]ResponseVersion, error) {
 	rows, err := s.Pool.Query(ctx, `

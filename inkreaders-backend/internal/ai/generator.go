@@ -25,7 +25,7 @@ type Client interface {
 	Generate(ctx context.Context, p GenerateParams) (GenerateOut, error)
 	Remix(ctx context.Context, p RemixParams) (db.ExerciseSet, error)
 	Explain(ctx context.Context, questionID string, prompt string, answer any) (string, error)
-
+	GenerateResponse(ctx context.Context, prompt string) (string, error)
 }
 
 type RemixParams struct {
@@ -35,3 +35,5 @@ type RemixParams struct {
 	ReduceTo  int
 	Note      string
 }
+
+

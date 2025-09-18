@@ -2,18 +2,24 @@
 "use client";
 
 import SectionCard from "@/app/notebook/components/SectionCard";
-import { Section } from "@/app/notebook/page";
+
+export type Response = {
+  id: string;
+  content: string;
+  content_html?: string;
+  authorType?: "ai" | "user";
+  createdAt?: string;
+  updatedAt?: string;
+};
 
 export default function NotebookCanvas({
-  sections,
-  onSelectSection,
-  onUpdate,
+  responses,
+  onSelectResponse,
 }: {
-  sections: Section[];
-  onSelectSection: (s: Section) => void;
-  onUpdate: (id: string, update: Partial<Section>) => void;
+  responses: Response[];
+  onSelectResponse: (r: Response) => void;
 }) {
-  if (sections.length === 0) {
+  if (responses.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-8 text-center text-gray-500">
         Start by asking a question above 👆
@@ -23,12 +29,11 @@ export default function NotebookCanvas({
 
   return (
     <div className="space-y-4">
-      {sections.map((s) => (
+      {responses.map((r) => (
         <SectionCard
-          key={s.id}
-          section={s}
-          onClick={() => onSelectSection(s)}
-          onUpdate={onUpdate}
+          key={r.id}
+          response={r}
+          onClick={() => onSelectResponse(r)}
         />
       ))}
     </div>

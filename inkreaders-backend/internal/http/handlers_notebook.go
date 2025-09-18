@@ -1,11 +1,12 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
 	"time"
-
+	"fmt"
 	"github.com/google/uuid"
 	"github.com/go-chi/chi/v5"
 	"github.com/wedaa-tech/inkreaders-social-hub/inkreaders-backend/internal/db"
@@ -51,6 +52,7 @@ func (h *Handlers) ListTopics(w http.ResponseWriter, r *http.Request, s *Session
 	})
 }
 
+// CreateTopic - POST /api/topics
 func (h *Handlers) CreateTopic(w http.ResponseWriter, r *http.Request, s *SessionData) {
 	ctx := r.Context()
 	var in createTopicIn
@@ -58,35 +60,69 @@ func (h *Handlers) CreateTopic(w http.ResponseWriter, r *http.Request, s *Sessio
 		http.Error(w, "bad json", http.StatusBadRequest)
 		return
 	}
-	
-	topic, err := h.Store.CreateTopic(ctx, s.AccountID, in.Title, in.Prompt, in.Tags, in.Meta)
 
+	// 1. Insert Topic
+	topic, err := h.Store.CreateTopic(ctx, s.AccountID, in.Title, in.Prompt, in.Tags, in.Meta)
 	if err != nil {
 		http.Error(w, "db error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	// 2. Create placeholder response
 	placeholderRaw := map[string]any{
 		"note":   "placeholder - initial response will be generated async",
 		"prompt": in.Prompt,
 	}
-	initialResp, err := h.Store.CreateResponse(ctx, topic.ID, nil, "ai", "Generating…", "", placeholderRaw)
+	initialResp, err := h.Store.CreateResponse(
+		ctx,
+		topic.ID,
+		nil,
+		"ai",
+		"Generating…",
+		"",
+		placeholderRaw,
+	)
 	if err != nil {
+		// Not fatal: return topic anyway
 		initialResp = db.Response{}
 	}
 
+	// 3. Kick off background AI generation
+	go func(respID uuid.UUID, prompt string) {
+		ctx2 := context.Background()
+		aiResp, err := h.AI.GenerateResponse(ctx2, prompt)
+		if err != nil {
+			fmt.Printf("[AI error] respID=%s prompt=%q err=%v\n", respID, prompt, err)
+			return
+		}
+
+		// TODO: sanitize Markdown -> HTML
+		html := aiResp
+
+		if err := h.Store.UpdateResponse(ctx2, respID, aiResp, html, map[string]any{
+			"source": "ai",
+			"prompt": prompt,
+		}); err != nil {
+			fmt.Printf("[AI error] failed to update response: %v\n", err)
+		}
+	}(initialResp.ID, in.Prompt)
+
+
+	// 4. Return immediately
+	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"topic":           topic,
 		"initialResponse": initialResp,
 	})
 }
 
+
 func (h *Handlers) GetTopic(w http.ResponseWriter, r *http.Request, s *SessionData) {
 	ctx := r.Context()
 	idStr := chi.URLParam(r, "id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		http.Error(w, "invalid id", http.StatusBadRequest)
+		http.Error(w, `{"error":"Invalid ID"}`, http.StatusBadRequest)
 		return
 	}
 

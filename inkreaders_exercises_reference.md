@@ -1,3 +1,41 @@
+curl -i -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"identifier":"yourhandle.bsky.social","appPassword":"your-app-password"}' \
+  -c cookies.txt
+
+
+curl -i http://localhost:8080/api/debug/who -b cookies.txt
+
+curl -i -X POST http://localhost:8080/api/auth/logout -b cookies.txt
+
+
+
+curl -i -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"identifier":"praveen-mishra.bsky.social","appPassword":"2agi-ikck-lgqx-ukji"}' \
+  -c cookies.txt
+
+
+
+curl -i -X POST http://localhost:8080/api/topics \
+  -H "Content-Type: application/json" \
+  -b cookies.txt \
+  -d '{"title":"Linear Algebra review","prompt":"Summarize eigenvalues and eigenvectors", "tags":["math","linear-algebra"], "meta": {"visibility": "private"}}'
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # 📘 Inkreaders Social Hub — Exercises Backend & ATProto Integration
 
 This document captures the **current state of the backend API, ATProto wiring, and curl test commands** we’ve built so far for the *Exercises* feature.

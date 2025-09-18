@@ -378,3 +378,18 @@ func trimToJSONArray(s string) string {
 	}
 	return s[start : end+1]
 }
+
+
+// GenerateResponse generates a free-text AI response for a notebook topic
+func (c *OpenAIClient) GenerateResponse(ctx context.Context, prompt string) (string, error) {
+    sys := `You are a helpful tutor. 
+Respond to the user's request with a clear, structured, plain text (Markdown ok).
+Avoid JSON or code formatting unless explicitly asked.`
+
+    raw, err := c.chat(ctx, sys, prompt)
+    if err != nil {
+        return "", err
+    }
+    return strings.TrimSpace(string(raw)), nil
+}
+
