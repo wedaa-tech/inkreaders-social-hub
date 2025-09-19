@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/wedaa-tech/inkreaders-social-hub/inkreaders-backend/internal/db"
 )
@@ -41,16 +42,28 @@ func (s *Stub) Remix(ctx context.Context, p RemixParams) (db.ExerciseSet, error)
 	}, nil
 }
 
+// Explain returns a canned explanation (used when AI_STUB=true).
 func (s *Stub) Explain(ctx context.Context, questionID string, prompt string, answer any) (string, error) {
 	ansStr := fmt.Sprintf("%v", answer)
 	if ansStr == "<nil>" {
 		ansStr = ""
 	}
-	if ansStr == "" {
-		return "This is a stub explanation: the correct answer is provided above. In production, the AI will return a concise rationale.", nil
+
+	// Simple language mirroring stub:
+	if containsHindi(prompt) {
+		return "यह एक स्टब उत्तर है। वास्तविक AI हिंदी में सारांश और व्याख्या देगा।", nil
 	}
-	return fmt.Sprintf("Stub explanation for %s: The answer is %s. (In production the AI will provide a concise rationale.)", questionID, ansStr), nil
+	if containsTelugu(prompt) {
+		return "ఇది ఒక స్టబ్ సమాధానం. నిజమైన AI తెలుగు లో సమాధానం ఇస్తుంది.", nil
+	}
+	if containsBangla(prompt) {
+		return "এটি একটি স্টাব উত্তর। প্রকৃত AI বাংলা ভাষায় উত্তর দেবে।", nil
+	}
+
+	// Default English
+	return fmt.Sprintf("Stub explanation for %s: The answer is %s.", questionID, ansStr), nil
 }
+
 
 // GenerateResponse returns a canned AI response for Notebook (stub mode).
 func (s *Stub) GenerateResponse(ctx context.Context, prompt string) (string, error) {
@@ -62,4 +75,17 @@ func ifEmpty(s, def string) string {
 		return def
 	}
 	return s
+}
+
+
+func containsHindi(s string) bool {
+	return strings.ContainsAny(s, "अआइईउऊएऐओऔकखगघङचछजझञटठडढणतथदधनपफबभमयरलवशषसह") // Devanagari range
+}
+
+func containsTelugu(s string) bool {
+	return strings.ContainsAny(s, "అఆఇఈఉఊఎఏఐఒఓఔకఖగఘఙచఛజఝఞటఠడఢణతథదధనపఫబభమయరలవశషసహ") // Telugu
+}
+
+func containsBangla(s string) bool {
+	return strings.ContainsAny(s, "অআইঈউঊঋএঐওঔকখগঘঙচছজঝঞটঠডঢণতথদধনপফবভমযরলশষসহ") // Bengali
 }

@@ -23,7 +23,13 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+    font-family: 
+    "Noto Sans",
+    "Noto Sans Devanagari",
+    "Noto Sans Bengali",
+    "Noto Sans Telugu",
+    "Noto Sans Tamil",
+    Arial, Helvetica, sans-serif;
 }
 
 /* Markdown-friendly styles */

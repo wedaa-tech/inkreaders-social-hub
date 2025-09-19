@@ -153,13 +153,15 @@ func builderPrompt(p GenerateParams) string {
 
 func (c *OpenAIClient) chat(ctx context.Context, system string, user string) ([]byte, error) {
 	body := map[string]any{
-		"model": c.Model,
-		"messages": []map[string]string{
-			{"role": "system", "content": system},
-			{"role": "user", "content": user},
-		},
-		"temperature": 0.2,
+    "model": c.Model,
+    "messages": []map[string]string{
+        {"role": "system", "content": system},
+        {"role": "user", "content": user},
+    },
+    "temperature": 0.2,
+    "max_tokens": 600, // tweak as needed
 	}
+
 	b, _ := json.Marshal(body)
 
 	req, _ := http.NewRequestWithContext(ctx, "POST", "https://api.openai.com/v1/chat/completions", bytes.NewReader(b))
@@ -384,7 +386,15 @@ func trimToJSONArray(s string) string {
 func (c *OpenAIClient) GenerateResponse(ctx context.Context, prompt string) (string, error) {
     sys := `You are a helpful tutor. 
 Respond to the user's request with a clear, structured, plain text (Markdown ok).
-Avoid JSON or code formatting unless explicitly asked.`
+Avoid JSON or code formatting unless explicitly asked.
+Try to understand the language of the response from the context of the user's query.
+Keep your answers clear, concise, and educational.
+If you don't know the answer, say "I don't know" or "I am not sure".
+Do NOT make up answers or hallucinate facts.
+Do NOT mention AI, ChatGPT, or OpenAI in your response.
+Do NOT include any preamble or closing remarks.
+Keep the response focused on the user's question and context.
+When explaining concepts, use simple language suitable for learners.`
 
     raw, err := c.chat(ctx, sys, prompt)
     if err != nil {
