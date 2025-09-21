@@ -707,7 +707,7 @@ export default function FeedClient() {
       if (res.status === 401 && feedSource === "user") {
         setPosts([]); // show empty feed under the banner
         setError(null); // avoid red error box
-        setEffectiveSource("user"); // “Showing: Following (You)”
+        setEffectiveSource("user"); // “Showing: YourStream”
         setLoading(false);
         return; // stop here
       }
@@ -851,7 +851,7 @@ export default function FeedClient() {
                 : "bg-gray-100 text-gray-700 hover:bg-gray-200")
             }
           >
-            For You
+            InkFlow
           </button>
 
           <button
@@ -865,13 +865,13 @@ export default function FeedClient() {
             }
             title={bsConnected ? "Your following" : "Connect Bluesky to enable"}
           >
-            Following (You)
+            Your Shelf
           </button>
 
           <div className="ml-auto text-xs text-gray-500 px-2">
             Showing:{" "}
             <span className="font-medium">
-              {effectiveSource === "user" ? "Following (You)" : "For You"}
+              {effectiveSource === "user" ? "Your Shelf" : "InkFlow"}
             </span>
           </div>
         </div>

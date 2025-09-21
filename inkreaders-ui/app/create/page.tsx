@@ -7,9 +7,11 @@ import CreateTabs, { TabKey } from "@/app/create/components/CreateTabs";
 import StoryComposer from "@/app/create/components/StoryComposer";
 import ExerciseGenerator from "@/app/create/components/ExerciseGenerator";
 import PackBuilder from "@/app/create/pack/PackBuilder";
+import NotebookPage from "@/app/notebook/page";
+import NotebookPanel from "@/app/notebook/components/NotebookPanel";
 
 export default function CreatePage() {
-  const [tab, setTab] = useState<TabKey>("story");
+  const [tab, setTab] = useState<TabKey>("exercise");
 
   return (
     <main className="min-h-screen bg-gray-50 text-gray-900">
@@ -36,10 +38,12 @@ export default function CreatePage() {
             </div>
           </div>
         </div>
-
+          
         {tab === "story" && <StoryComposer />}
         {tab === "exercise" && <ExerciseGenerator />}
         {tab === "pack" && <PackBuilder />}
+        {tab === "notebook" && <NotebookPanel />}
+
 
         <div className="bg-gradient-to-r from-teal-50 to-cyan-50 p-6 rounded-3xl border border-teal-200 shadow-lg mt-6">
           <div className="flex items-start gap-4">
