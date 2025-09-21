@@ -16,10 +16,14 @@ const fetcher = (url: string) =>
   fetch(url, { credentials: "include" }).then((r) => r.json());
 
 export default function InspectorPanel({ topicId }: { topicId: string | null }) {
-  const { data, error, isLoading, mutate } = useSWR<Highlight[]>(
+  const { data, error, isLoading } = useSWR(
+  topicId ? `/api/topics/${topicId}/highlights` : null,
+  fetcher
+);  
+const mutate = useSWR(
     topicId ? `/api/topics/${topicId}/highlights` : null,
     fetcher
-  );
+  ).mutate;
 
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
