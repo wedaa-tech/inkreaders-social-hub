@@ -4,7 +4,6 @@
 import { useState, useEffect } from "react";
 import useSWR, { mutate } from "swr";
 import ResponseCard from "./ResponseCard";
-import ReplyBox from "./ReplyBox";
 
 const fetcher = (url: string) =>
   fetch(url, { credentials: "include" }).then((r) => r.json());
@@ -55,7 +54,6 @@ export default function TopicCanvas({ topicId }: { topicId: string }) {
       {responses.length === 0 && (
         <div className="text-sm text-gray-400">No responses yet</div>
       )}
-      <ReplyBox topicId={topicId} onNew={handleNewResponse} />
     </div>
   );
 }

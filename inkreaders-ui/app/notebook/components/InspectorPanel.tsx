@@ -7,6 +7,9 @@ import useSWR, { mutate } from "swr";
 const fetcher = (url: string) =>
   fetch(url, { credentials: "include" }).then((r) => r.json());
 
+// same pastel palette
+const PASTEL_COLORS = ["#FEF3C7", "#D1FAE5", "#DBEAFE", "#FCE7F3", "#F3F4F6"];
+
 export default function InspectorPanel({
   topicId,
 }: {
@@ -65,7 +68,7 @@ export default function InspectorPanel({
 
   return (
     <div className="rounded-xl border bg-white shadow-sm p-4 space-y-3">
-      <h3 className="text-lg font-semibold">Inspector</h3>
+      <h3 className="text-lg font-semibold">Note Highlights</h3>
 
       {highlights.length === 0 && (
         <div className="text-sm text-gray-400">No highlights yet</div>
@@ -97,7 +100,7 @@ function HighlightItem({
 }) {
   const [editing, setEditing] = useState(false);
   const [note, setNote] = useState(h.note || "");
-  const [color, setColor] = useState(h.color);
+  const [color, setColor] = useState(h.color || PASTEL_COLORS[0]);
 
   function handleSave() {
     onSave(color, note);
@@ -106,69 +109,86 @@ function HighlightItem({
 
   return (
     <li className="border rounded-md p-2 bg-gray-50 text-sm space-y-1">
-      <div>
-        <span
-          className="px-1 rounded"
+      <div className="flex items-start gap-3">
+        {/* Color swatch */}
+        <div
+          aria-hidden
+          className="h-6 w-6 rounded-sm border"
           style={{ backgroundColor: color }}
-        >
-          {h.excerpt}
-        </span>
-      </div>
+        />
+        <div className="flex-1">
+          <div className="font-medium">{h.excerpt}</div>
+          {h.context_snippet && (
+            <div className="text-xs text-gray-500 line-clamp-2">
+              {h.context_snippet}
+            </div>
+          )}
 
-      {editing ? (
-        <div className="space-y-2">
-          <textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            rows={2}
-            className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
-          />
-          <div className="flex gap-2">
-            {["yellow", "green", "red"].map((c) => (
-              <button
-                key={c}
-                onClick={() => setColor(c)}
-                className={`h-5 w-5 rounded-full border ${
-                  color === c ? "ring-2 ring-offset-1 ring-blue-500" : ""
-                }`}
-                style={{ backgroundColor: c }}
-              />
-            ))}
-          </div>
-          <div className="flex gap-2 justify-end">
-            <button
-              onClick={handleSave}
-              className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
-            >
-              Save
-            </button>
-            <button
-              onClick={() => setEditing(false)}
-              className="px-2 py-1 text-xs border rounded"
-            >
-              Cancel
-            </button>
-          </div>
+          {/* Note display / edit */}
+          {!editing ? (
+            h.note && <div className="text-gray-700 mt-1">{h.note}</div>
+          ) : (
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              rows={2}
+              className="w-full border rounded px-2 py-1 text-sm mt-1"
+              placeholder="Edit note…"
+            />
+          )}
         </div>
-      ) : (
-        <>
-          {note && <div className="text-gray-700">{note}</div>}
-          <div className="flex gap-3 justify-end">
-            <button
-              onClick={() => setEditing(true)}
-              className="text-xs text-blue-500 hover:underline"
-            >
-              Edit
-            </button>
-            <button
-              onClick={onDelete}
-              className="text-xs text-red-500 hover:underline"
-            >
-              Delete
-            </button>
-          </div>
-        </>
-      )}
+
+        {/* Actions */}
+        <div className="flex flex-col items-end gap-2">
+          {!editing ? (
+            <>
+              <button
+                onClick={() => setEditing(true)}
+                className="text-xs text-blue-500 hover:underline"
+              >
+                Edit
+              </button>
+              <button
+                onClick={onDelete}
+                className="text-xs text-red-500 hover:underline"
+              >
+                Delete
+              </button>
+            </>
+          ) : (
+            <div className="flex flex-col items-end gap-2">
+              {/* Color picker */}
+              <div className="flex gap-2">
+                {PASTEL_COLORS.map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => setColor(c)}
+                    className={`h-5 w-5 rounded-full border ${
+                      color === c ? "ring-2 ring-offset-1 ring-blue-500" : ""
+                    }`}
+                    style={{ backgroundColor: c }}
+                  />
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleSave}
+                  className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                >
+                  Save
+                </button>
+                <button
+                  onClick={() => setEditing(false)}
+                  className="px-2 py-1 text-xs border rounded"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </li>
   );
 }
+

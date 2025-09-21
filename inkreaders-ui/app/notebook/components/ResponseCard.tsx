@@ -11,6 +11,45 @@ import HighlightToolbar from "./HighlightToolbar";
 const fetcher = (url: string) =>
   fetch(url, { credentials: "include" }).then((r) => r.json());
 
+// Pastel palette (used across components)
+const PASTEL_COLORS = ["#FEF3C7", "#D1FAE5", "#DBEAFE", "#FCE7F3", "#F3F4F6"];
+
+/**
+ * Build a regex string that tolerates HTML tags between characters/words.
+ * This helps matching excerpts inside HTML content that may contain <strong>/<em> etc.
+ * It returns a RegExp instance (global, case-insensitive).
+ */
+function buildHtmlTolerantRegex(excerpt: string): RegExp {
+  const trimmed = excerpt.trim();
+  if (trimmed === "") return new RegExp("$^"); // never match
+
+  // Escape regex special chars for a single char
+  function escChar(c: string) {
+    return c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  // Build pattern: allow optional tags between characters and around whitespace.
+  // For whitespace runs, allow tags around whitespace and \s+ (flexible spaces).
+  let pattern = "";
+  for (let i = 0; i < trimmed.length; i++) {
+    const ch = trimmed[i];
+    if (/\s/.test(ch)) {
+      // If whitespace, collapse consecutive whitespace
+      // consume any following whitespace in the loop
+      let j = i + 1;
+      while (j < trimmed.length && /\s/.test(trimmed[j])) j++;
+      // pattern: allow tags before/after and whitespace
+      pattern += `(?:<[^>]+>)*\\s+(?:<[^>]+>)*`;
+      i = j - 1;
+    } else {
+      // normal character: escape and allow optional tags between characters
+      pattern += escChar(ch) + `(?:<[^>]+>)*`;
+    }
+  }
+  // global, case-insensitive, and allow matching across the string
+  return new RegExp(pattern, "gi");
+}
+
 export default function ResponseCard({
   resp,
   topicId,
@@ -73,15 +112,7 @@ export default function ResponseCard({
     return () => document.removeEventListener("mouseup", handleMouseUp);
   }, []);
 
-  // Helper: escape regex special chars and allow flexible whitespace
-  function escapeForRegex(s: string) {
-    // First escape regex specials
-    const escaped = s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    // Then convert runs of whitespace into \s+ to match flexible spacing
-    return escaped.replace(/\s+/g, "\\s+");
-  }
-
-  // Inject <mark> tags into the source (markdown or html string).
+  // Inject <mark> tags into the source HTML/markdown string.
   // Deduplicate and replace longest excerpts first to avoid substring collisions.
   function injectHighlightsInto(text: string) {
     if (!Array.isArray(highlights) || highlights.length === 0) return text;
@@ -103,14 +134,13 @@ export default function ResponseCard({
     let out = text;
     for (const h of sorted) {
       try {
-        const safe = escapeForRegex(String(h.excerpt || ""));
-        const re = new RegExp(safe, "gi"); // global, case-insensitive
+        // Build an HTML-tolerant regex for this excerpt
+        const re = buildHtmlTolerantRegex(String(h.excerpt || ""));
+        // Replace matches with <mark>. We preserve matched text (which may include tags).
         out = out.replace(re, (match) =>
-          `<mark data-hid="${h.id}" style="background:${h.color}">${match}</mark>`
+          `<mark data-hid="${h.id}" style="background:${h.color}; padding:0.05em 0.15em; border-radius:0.18em">${match}</mark>`
         );
       } catch (err) {
-        // ignore malformed regex or replacement errors for a highlight,
-        // continue with remaining highlights (safe fail).
         console.warn("highlight injection failed for excerpt:", h.excerpt, err);
       }
     }
@@ -124,7 +154,8 @@ export default function ResponseCard({
   // recompute rendered markdown/html whenever resp.content/content_html or highlights change
   const renderedWithMarks = useMemo(() => {
     return injectHighlightsInto(sourceText);
-  }, [sourceText, highlights]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceText, JSON.stringify(highlights)]);
 
   // Inline edit save
   async function saveHighlightEdit(id: string, color: string, note: string) {
@@ -206,6 +237,7 @@ export default function ResponseCard({
               // revalidate highlights
               mutate(`/api/topics/${topicId}/highlights`);
             }}
+            colors={PASTEL_COLORS}
           />
         </div>
       )}
@@ -223,7 +255,7 @@ export default function ResponseCard({
             className="w-full border rounded px-2 py-1 text-sm mb-2"
           />
           <div className="flex gap-2 mb-2">
-            {["yellow", "green", "red"].map((c) => (
+            {PASTEL_COLORS.map((c) => (
               <button
                 key={c}
                 onClick={() =>

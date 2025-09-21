@@ -9,14 +9,16 @@ export default function HighlightToolbar({
   responseId,
   selection,
   onCreated,
+  colors = ["#FEF3C7", "#D1FAE5", "#DBEAFE", "#FCE7F3", "#F3F4F6"],
 }: {
   topicId: string;
   responseId: string;
   selection: string;
   onCreated: () => void;
+  colors?: string[];
 }) {
   const [note, setNote] = useState("");
-  const [color, setColor] = useState("yellow");
+  const [color, setColor] = useState(colors[0] || "#FEF3C7");
   const [saving, setSaving] = useState(false);
 
   async function handleSave() {
@@ -31,7 +33,8 @@ export default function HighlightToolbar({
           response_id: responseId,
           excerpt: selection,
           color,
-          note: note.trim() || null,
+          note: note?.trim() || null,
+          context_snippet: selection.slice(0, 200),
         }),
       });
       if (!res.ok) throw new Error(await res.text());
@@ -49,12 +52,12 @@ export default function HighlightToolbar({
   }
 
   return (
-    <div className="rounded-lg bg-white border shadow-md p-3 w-64 space-y-3">
+    <div className="rounded-lg bg-white border shadow-md p-3 w-72 space-y-3">
       <div className="text-xs text-gray-600 line-clamp-2">"{selection}"</div>
 
       {/* Color picker */}
       <div className="flex gap-2">
-        {["yellow", "green", "red"].map((c) => (
+        {colors.map((c) => (
           <button
             key={c}
             onClick={() => setColor(c)}
@@ -62,6 +65,7 @@ export default function HighlightToolbar({
               color === c ? "ring-2 ring-offset-1 ring-blue-500" : ""
             }`}
             style={{ backgroundColor: c }}
+            aria-label={`Highlight color ${c}`}
           />
         ))}
       </div>
