@@ -1,150 +1,155 @@
 // app/notebook/components/InspectorPanel.tsx
 "use client";
 
-import useSWR from "swr";
+import useSWR, { mutate } from "swr";
 import { useState } from "react";
-
-type Highlight = {
-  id: string;
-  excerpt: string;
-  color: string;
-  note?: string;
-  created_at?: string;
-};
 
 const fetcher = (url: string) =>
   fetch(url, { credentials: "include" }).then((r) => r.json());
 
-export default function InspectorPanel({ topicId }: { topicId: string | null }) {
+export default function InspectorPanel({ topicId }: { topicId: string }) {
   const { data, error, isLoading } = useSWR(
-  topicId ? `/api/topics/${topicId}/highlights` : null,
-  fetcher
-);  
-const mutate = useSWR(
     topicId ? `/api/topics/${topicId}/highlights` : null,
     fetcher
-  ).mutate;
+  );
 
-  const [editing, setEditing] = useState<string | null>(null);
-  const [draft, setDraft] = useState("");
-
-  if (!topicId) {
-    return (
-      <aside className="hidden md:block w-72 border-l border-gray-200 p-4 text-gray-500">
-        Select a topic to inspect
-      </aside>
-    );
+  async function handleUpdate(id: string, updates: any) {
+    try {
+      const res = await fetch(`/api/highlights/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(updates),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      mutate(`/api/topics/${topicId}/highlights`);
+    } catch (err) {
+      console.error("Update failed:", err);
+      alert("Failed to update highlight");
+    }
   }
 
-  if (error) {
-    return (
-      <aside className="hidden md:block w-72 border-l border-gray-200 p-4 text-red-500">
-        Failed to load highlights
-      </aside>
-    );
+  async function handleDelete(id: string) {
+    if (!confirm("Delete this highlight?")) return;
+    try {
+      const res = await fetch(`/api/highlights/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(await res.text());
+      mutate(`/api/topics/${topicId}/highlights`);
+    } catch (err) {
+      console.error("Delete failed:", err);
+      alert("Failed to delete highlight");
+    }
   }
+
+  if (isLoading) return <div className="text-gray-400">Loading highlights…</div>;
+  if (error) return <div className="text-red-500">Failed to load highlights</div>;
 
   const highlights = data || [];
 
-  async function saveNote(id: string) {
-    await fetch(`/api/highlights/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ note: draft }),
-    });
-    setEditing(null);
-    setDraft("");
-    mutate();
-  }
-
-  async function deleteHighlight(id: string) {
-    await fetch(`/api/highlights/${id}`, {
-      method: "DELETE",
-      credentials: "include",
-    });
-    mutate();
-  }
-
   return (
-    <aside className="hidden md:block w-72 border-l border-gray-200 p-4 bg-gray-50 overflow-y-auto">
-      <h2 className="font-semibold mb-4">Inspector</h2>
+    <div className="rounded-lg border bg-white shadow-sm p-4 space-y-4">
+      <h3 className="text-sm font-semibold text-gray-700">Highlights & Notes</h3>
 
-      {isLoading && <p className="text-gray-400">Loading highlights…</p>}
-
-      {highlights.length === 0 && !isLoading && (
-        <p className="text-gray-400 text-sm">No highlights yet</p>
+      {highlights.length === 0 && (
+        <p className="text-sm text-gray-400">No highlights yet</p>
       )}
 
-      <ul className="space-y-3">
-        {highlights.map((h) => (
-          <li
-            key={h.id}
-            className="rounded-lg border border-gray-200 bg-white p-2 text-sm shadow-sm"
-          >
-            <div className="mb-1">
-              <span
-                className={`inline-block rounded px-1 ${
-                  h.color === "yellow"
-                    ? "bg-yellow-200"
-                    : h.color === "green"
-                    ? "bg-green-200"
-                    : "bg-red-200"
-                }`}
-              >
-                {h.excerpt}
-              </span>
-            </div>
+      {highlights.map((h: any) => (
+        <HighlightItem
+          key={h.id}
+          highlight={h}
+          onUpdate={(updates) => handleUpdate(h.id, updates)}
+          onDelete={() => handleDelete(h.id)}
+        />
+      ))}
+    </div>
+  );
+}
 
-            {editing === h.id ? (
-              <div className="space-y-2">
-                <textarea
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  className="w-full rounded border border-gray-300 p-1 text-sm"
-                />
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => saveNote(h.id)}
-                    className="text-xs px-2 py-1 bg-blue-500 text-white rounded"
-                  >
-                    Save
-                  </button>
-                  <button
-                    onClick={() => setEditing(null)}
-                    className="text-xs px-2 py-1 bg-gray-200 rounded"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex justify-between items-center">
-                <p className="text-gray-700">
-                  {h.note || <span className="text-gray-400">No note</span>}
-                </p>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      setEditing(h.id);
-                      setDraft(h.note || "");
-                    }}
-                    className="text-xs text-blue-600"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => deleteHighlight(h.id)}
-                    className="text-xs text-red-600"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-            )}
-          </li>
-        ))}
-      </ul>
-    </aside>
+function HighlightItem({
+  highlight,
+  onUpdate,
+  onDelete,
+}: {
+  highlight: any;
+  onUpdate: (updates: any) => void;
+  onDelete: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [note, setNote] = useState(highlight.note || "");
+  const [color, setColor] = useState(highlight.color || "yellow");
+
+  const save = () => {
+    onUpdate({ note, color });
+    setEditing(false);
+  };
+
+  return (
+    <div
+      className="rounded border p-3 text-sm"
+      style={{ backgroundColor: highlight.color || "yellow" }}
+    >
+      <p className="font-medium text-gray-800">“{highlight.excerpt}”</p>
+
+      {editing ? (
+        <div className="space-y-2 mt-2">
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            rows={2}
+            className="w-full rounded border px-2 py-1 text-sm"
+          />
+          <div className="flex gap-2">
+            {["yellow", "green", "red"].map((c) => (
+              <button
+                key={c}
+                onClick={() => setColor(c)}
+                className={`h-6 w-6 rounded-full border ${
+                  color === c ? "ring-2 ring-offset-1 ring-blue-500" : ""
+                }`}
+                style={{ backgroundColor: c }}
+              />
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={save}
+              className="px-2 py-1 rounded bg-blue-600 text-white text-xs"
+            >
+              Save
+            </button>
+            <button
+              onClick={() => setEditing(false)}
+              className="px-2 py-1 rounded bg-gray-200 text-xs"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          {highlight.note && (
+            <p className="mt-1 text-gray-700">Note: {highlight.note}</p>
+          )}
+          <div className="flex gap-3 mt-2 text-xs">
+            <button
+              onClick={() => setEditing(true)}
+              className="text-blue-600 hover:underline"
+            >
+              Edit
+            </button>
+            <button
+              onClick={onDelete}
+              className="text-red-600 hover:underline"
+            >
+              Delete
+            </button>
+          </div>
+        </>
+      )}
+    </div>
   );
 }

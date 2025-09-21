@@ -311,3 +311,89 @@ func (h *Handlers) GetResponseVersion(w http.ResponseWriter, r *http.Request, s 
 	}
 	_ = json.NewEncoder(w).Encode(v)
 }
+
+
+// --- Highlights ---
+func (h *Handlers) ListHighlights(w http.ResponseWriter, r *http.Request, s *SessionData) {
+	ctx := r.Context()
+	topicID, err := uuid.Parse(chi.URLParam(r, "topic_id"))
+	if err != nil {
+		http.Error(w, "invalid topic_id", 400)
+		return
+	}
+
+	items, err := h.Store.ListHighlightsByTopic(ctx, topicID)
+	if err != nil {
+		http.Error(w, "db error: "+err.Error(), 500)
+		return
+	}
+	_ = json.NewEncoder(w).Encode(items)
+}
+
+type createHighlightIn struct {
+	ResponseID string  `json:"response_id"`
+	Excerpt    string  `json:"excerpt"`
+	Color      string  `json:"color"`
+	Note       *string `json:"note,omitempty"`
+}
+
+func (h *Handlers) CreateHighlight(w http.ResponseWriter, r *http.Request, s *SessionData) {
+	ctx := r.Context()
+	topicID, err := uuid.Parse(chi.URLParam(r, "topic_id"))
+	if err != nil {
+		http.Error(w, "invalid topic_id", 400)
+		return
+	}
+
+	var in createHighlightIn
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		http.Error(w, "bad json", 400)
+		return
+	}
+	respID, _ := uuid.Parse(in.ResponseID)
+
+	item, err := h.Store.CreateHighlight(ctx, topicID, respID, s.AccountID, in.Excerpt, in.Color, in.Note)
+	if err != nil {
+		http.Error(w, "db error: "+err.Error(), 500)
+		return
+	}
+	_ = json.NewEncoder(w).Encode(item)
+}
+
+type updateHighlightIn struct {
+	Color string  `json:"color"`
+	Note  *string `json:"note,omitempty"`
+}
+
+func (h *Handlers) UpdateHighlight(w http.ResponseWriter, r *http.Request, s *SessionData) {
+	ctx := r.Context()
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		http.Error(w, "invalid id", 400)
+		return
+	}
+	var in updateHighlightIn
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		http.Error(w, "bad json", 400)
+		return
+	}
+	if err := h.Store.UpdateHighlight(ctx, id, in.Color, in.Note); err != nil {
+		http.Error(w, "db error: "+err.Error(), 500)
+		return
+	}
+	w.WriteHeader(204)
+}
+
+func (h *Handlers) DeleteHighlight(w http.ResponseWriter, r *http.Request, s *SessionData) {
+	ctx := r.Context()
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		http.Error(w, "invalid id", 400)
+		return
+	}
+	if err := h.Store.DeleteHighlight(ctx, id); err != nil {
+		http.Error(w, "db error: "+err.Error(), 500)
+		return
+	}
+	w.WriteHeader(204)
+}

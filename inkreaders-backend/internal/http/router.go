@@ -108,5 +108,12 @@ func NewRouter(agent *xrpc.Client, did string, store *db.Store, aiClient ai.Clie
     r.Get("/versions/{version_id}", auth.WithSession(h.GetResponseVersion))
 	})
 
+	// Highlights
+	r.Get("/api/topics/{topic_id}/highlights", auth.WithSession(h.ListHighlights))
+	r.Post("/api/topics/{topic_id}/highlights", auth.WithSession(h.CreateHighlight))
+	r.Patch("/api/highlights/{id}", auth.WithSession(h.UpdateHighlight))
+	r.Delete("/api/highlights/{id}", auth.WithSession(h.DeleteHighlight))
+
+
 	return r
 }

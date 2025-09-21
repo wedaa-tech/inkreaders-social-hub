@@ -48,6 +48,19 @@ type ResponseVersion struct {
 	CreatedAt   time.Time              `json:"createdAt"`
 }
 
+// --- Highlights ---
+type Highlight struct {
+	ID         uuid.UUID  `json:"id"`
+	TopicID    uuid.UUID  `json:"topic_id"`
+	ResponseID uuid.UUID  `json:"response_id"`
+	UserID     uuid.UUID  `json:"user_id"`
+	Excerpt    string     `json:"excerpt"`
+	Color      string     `json:"color"`
+	Note       *string    `json:"note,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
+}
+
 // --- Create topic ---
 func (s *Store) CreateTopic(ctx context.Context, userID uuid.UUID, title, description string, tags []string, meta any) (Topic, error) {
 	var out Topic
@@ -361,4 +374,54 @@ func (s *Store) GetResponseVersion(ctx context.Context, id uuid.UUID) (ResponseV
 	}
 	_ = json.Unmarshal(rawRaw, &rv.Raw)
 	return rv, nil
+}
+
+
+func (s *Store) ListHighlightsByTopic(ctx context.Context, topicID uuid.UUID) ([]Highlight, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT id, topic_id, response_id, user_id, excerpt, color, note, created_at, updated_at
+		FROM highlights
+		WHERE topic_id=$1
+		ORDER BY created_at DESC
+	`, topicID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []Highlight
+	for rows.Next() {
+		var h Highlight
+		if err := rows.Scan(&h.ID, &h.TopicID, &h.ResponseID, &h.UserID,
+			&h.Excerpt, &h.Color, &h.Note, &h.CreatedAt, &h.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, h)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) CreateHighlight(ctx context.Context, topicID, responseID, userID uuid.UUID, excerpt, color string, note *string) (Highlight, error) {
+	var h Highlight
+	err := s.Pool.QueryRow(ctx, `
+		INSERT INTO highlights (topic_id, response_id, user_id, excerpt, color, note)
+		VALUES ($1,$2,$3,$4,$5,$6)
+		RETURNING id, topic_id, response_id, user_id, excerpt, color, note, created_at, updated_at
+	`, topicID, responseID, userID, excerpt, color, note).
+		Scan(&h.ID, &h.TopicID, &h.ResponseID, &h.UserID, &h.Excerpt, &h.Color, &h.Note, &h.CreatedAt, &h.UpdatedAt)
+	return h, err
+}
+
+func (s *Store) UpdateHighlight(ctx context.Context, id uuid.UUID, color string, note *string) error {
+	_, err := s.Pool.Exec(ctx, `
+		UPDATE highlights
+		SET color=$2, note=$3, updated_at=now()
+		WHERE id=$1
+	`, id, color, note)
+	return err
+}
+
+func (s *Store) DeleteHighlight(ctx context.Context, id uuid.UUID) error {
+	_, err := s.Pool.Exec(ctx, `DELETE FROM highlights WHERE id=$1`, id)
+	return err
 }
