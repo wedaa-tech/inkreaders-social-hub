@@ -112,7 +112,7 @@ export default function ResponseCard({
         out = out.replace(
           re,
           (match) =>
-            `<mark data-hid="${h.id}" style="background:${h.color}; padding:0.05em 0.15em; border-radius:0.18em">${match}</mark>`
+            `<mark id="highlight-${h.id}" data-hid="${h.id}" style="background:${h.color}; padding:0.05em 0.15em; border-radius:0.18em">${match}</mark>`
         );
       } catch (err) {
         console.warn("highlight injection failed for:", h.excerpt, err);
@@ -198,7 +198,7 @@ export default function ResponseCard({
               setSelection("");
               setSelectionRect(null);
               mutate(`/api/topics/${topicId}/highlights`);
-              onHighlightCreated?.(); // ✅ notify parent if provided
+              onHighlightCreated?.();
             }}
             colors={PASTEL_COLORS}
           />

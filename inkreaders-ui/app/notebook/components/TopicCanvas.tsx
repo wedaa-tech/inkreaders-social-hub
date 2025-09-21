@@ -4,6 +4,7 @@
 import { useState, useEffect } from "react";
 import useSWR, { mutate } from "swr";
 import ResponseCard from "./ResponseCard";
+import InspectorPanel from "./InspectorPanel";
 
 const fetcher = (url: string) =>
   fetch(url, { credentials: "include" }).then((r) => r.json());
@@ -30,7 +31,6 @@ export default function TopicCanvas({ topicId }: { topicId: string }) {
   }
 
   async function handleHighlightCreated() {
-    // refresh inspector highlights when new one created
     mutate(`/api/topics/${topicId}/highlights`);
   }
 
@@ -41,8 +41,9 @@ export default function TopicCanvas({ topicId }: { topicId: string }) {
   const { topic } = data;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <h2 className="text-lg font-semibold">{topic.title}</h2>
+
       {responses.map((r) => (
         <ResponseCard
           key={r.id}
@@ -51,9 +52,23 @@ export default function TopicCanvas({ topicId }: { topicId: string }) {
           onHighlightCreated={handleHighlightCreated}
         />
       ))}
+
       {responses.length === 0 && (
         <div className="text-sm text-gray-400">No responses yet</div>
       )}
+
+      {/* ✅ Keep only one InspectorPanel here */}
+      <InspectorPanel
+        topicId={topicId}
+        onJumpToHighlight={(hid) => {
+          const el = document.getElementById(`highlight-${hid}`);
+          if (el) {
+            el.scrollIntoView({ behavior: "smooth", block: "center" });
+            el.classList.add("ring-2", "ring-blue-400");
+            setTimeout(() => el.classList.remove("ring-2", "ring-blue-400"), 2000);
+          }
+        }}
+      />
     </div>
   );
 }

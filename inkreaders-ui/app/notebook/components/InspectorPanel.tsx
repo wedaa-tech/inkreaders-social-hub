@@ -7,13 +7,14 @@ import useSWR, { mutate } from "swr";
 const fetcher = (url: string) =>
   fetch(url, { credentials: "include" }).then((r) => r.json());
 
-// same pastel palette
 const PASTEL_COLORS = ["#FEF3C7", "#D1FAE5", "#DBEAFE", "#FCE7F3", "#F3F4F6"];
 
 export default function InspectorPanel({
   topicId,
+  onJumpToHighlight,
 }: {
   topicId: string | null;
+  onJumpToHighlight?: (id: string) => void;
 }) {
   const { data, error, isLoading } = useSWR(
     topicId ? `/api/topics/${topicId}/highlights` : null,
@@ -81,6 +82,7 @@ export default function InspectorPanel({
             h={h}
             onDelete={() => handleDelete(h.id)}
             onSave={(color, note) => handleUpdate(h.id, color, note)}
+            onJump={() => onJumpToHighlight?.(h.id)}
           />
         ))}
       </ul>
@@ -93,10 +95,12 @@ function HighlightItem({
   h,
   onDelete,
   onSave,
+  onJump,
 }: {
   h: any;
   onDelete: () => void;
   onSave: (color: string, note: string) => void;
+  onJump?: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [note, setNote] = useState(h.note || "");
@@ -117,7 +121,13 @@ function HighlightItem({
           style={{ backgroundColor: color }}
         />
         <div className="flex-1">
-          <div className="font-medium">{h.excerpt}</div>
+          {/* Clickable excerpt to jump */}
+          <div
+            className="font-medium cursor-pointer hover:underline"
+            onClick={onJump}
+          >
+            {h.excerpt}
+          </div>
           {h.context_snippet && (
             <div className="text-xs text-gray-500 line-clamp-2">
               {h.context_snippet}
@@ -191,4 +201,3 @@ function HighlightItem({
     </li>
   );
 }
-
