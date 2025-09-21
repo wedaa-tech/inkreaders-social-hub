@@ -4,7 +4,6 @@
 import { useState } from "react";
 import PromptBar from "./PromptBar";
 import TopicCanvas from "./TopicCanvas";
-import InspectorPanel from "./InspectorPanel";
 import TopicNavigator from "./TopicNavigator";
 import TopicNavigatorDrawer from "./TopicNavigatorDrawer";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
@@ -75,8 +74,6 @@ export default function NotebookPanel() {
           {selectedTopic ? (
             <>
               <TopicCanvas topicId={selectedTopic} />
-              {/* Inspector below canvas */}
-              <InspectorPanel topicId={selectedTopic} />
             </>
           ) : (
             <p className="text-gray-500">

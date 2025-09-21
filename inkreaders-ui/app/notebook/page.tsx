@@ -5,7 +5,6 @@ import { useState } from "react";
 import Shell from "@/app/components/Shell";
 import PromptBar from "@/app/notebook/components/PromptBar";
 import TopicCanvas from "@/app/notebook/components/TopicCanvas";
-import InspectorPanel from "@/app/notebook/components/InspectorPanel";
 import TopicNavigator from "@/app/notebook/components/TopicNavigator";
 import TopicNavigatorDrawer from "@/app/notebook/components/TopicNavigatorDrawer";
 
@@ -43,15 +42,6 @@ export default function NotebookPage() {
               <h2 className="font-semibold mb-2">Topics</h2>
               <TopicNavigator onSelect={setSelectedTopic} />
             </div>
-            <div className="flex-1 overflow-y-auto">
-              {selectedTopic ? (
-                <InspectorPanel topicId={selectedTopic} />
-              ) : (
-                <div className="p-4 text-gray-500 text-sm">
-                  Select a topic to inspect highlights/notes
-                </div>
-              )}
-            </div>
           </div>
         }
       >
@@ -67,12 +57,6 @@ export default function NotebookPage() {
             </p>
           )}
         </div>
-
-        {/* Mobile drawer: navigator + inspector */}
-        <TopicNavigatorDrawer
-          onSelect={(id) => setSelectedTopic(id)}
-          inspector={selectedTopic ? <InspectorPanel topicId={selectedTopic} /> : null}
-        />
       </Shell>
     </main>
   );
