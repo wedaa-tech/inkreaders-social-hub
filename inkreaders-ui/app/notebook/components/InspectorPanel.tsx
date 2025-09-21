@@ -1,145 +1,146 @@
 // app/notebook/components/InspectorPanel.tsx
 "use client";
 
+import useSWR from "swr";
 import { useState } from "react";
-import { Section, Tag } from "../page";
 
-export default function InspectorPanel({
-  section,
-  onUpdate,
-}: {
-  section: Section | null;
-  onUpdate: (update: Partial<Section>) => void;
-}) {
-  const [tagInput, setTagInput] = useState("");
+type Highlight = {
+  id: string;
+  excerpt: string;
+  color: string;
+  note?: string;
+  created_at?: string;
+};
 
-  if (!section) {
+const fetcher = (url: string) =>
+  fetch(url, { credentials: "include" }).then((r) => r.json());
+
+export default function InspectorPanel({ topicId }: { topicId: string | null }) {
+  const { data, error, isLoading, mutate } = useSWR<Highlight[]>(
+    topicId ? `/api/topics/${topicId}/highlights` : null,
+    fetcher
+  );
+
+  const [editing, setEditing] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+
+  if (!topicId) {
     return (
-      <div className="p-4 text-gray-500">
-        <p className="text-sm">Select a section to see details here →</p>
-      </div>
+      <aside className="hidden md:block w-72 border-l border-gray-200 p-4 text-gray-500">
+        Select a topic to inspect
+      </aside>
     );
   }
 
-  const addTag = () => {
-    if (tagInput.trim()) {
-      const newTag: Tag = { id: crypto.randomUUID(), label: tagInput.trim() };
-      onUpdate({ tags: [...section.tags, newTag] });
-    }
-    setTagInput("");
-  };
+  if (error) {
+    return (
+      <aside className="hidden md:block w-72 border-l border-gray-200 p-4 text-red-500">
+        Failed to load highlights
+      </aside>
+    );
+  }
 
-  const removeTag = (id: string) => {
-    onUpdate({ tags: section.tags.filter((t) => t.id !== id) });
-  };
+  const highlights = data || [];
 
-  const removeHighlight = (id: string) => {
-    onUpdate({
-      highlights: section.highlights.filter((h) => h.id !== id),
+  async function saveNote(id: string) {
+    await fetch(`/api/highlights/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ note: draft }),
     });
-  };
+    setEditing(null);
+    setDraft("");
+    mutate();
+  }
 
-  const addNote = (id: string, note: string) => {
-    onUpdate({
-      highlights: section.highlights.map((h) =>
-        h.id === id ? { ...h, note } : h
-      ),
+  async function deleteHighlight(id: string) {
+    await fetch(`/api/highlights/${id}`, {
+      method: "DELETE",
+      credentials: "include",
     });
-  };
-
-  const generatePractice = () => {
-    // For now, mock → later call /api/exercises/generate with section.body
-    alert(`TODO: Generate practice for: ${section.title}`);
-  };
+    mutate();
+  }
 
   return (
-    <div className="space-y-4 p-4">
-      <h3 className="text-lg font-semibold">{section.title}</h3>
+    <aside className="hidden md:block w-72 border-l border-gray-200 p-4 bg-gray-50 overflow-y-auto">
+      <h2 className="font-semibold mb-4">Inspector</h2>
 
-      {/* Tags */}
-      <div>
-        <h4 className="font-medium text-sm">Tags</h4>
-        <div className="flex gap-2 mt-2">
-          <input
-            value={tagInput}
-            onChange={(e) => setTagInput(e.target.value)}
-            placeholder="Add tag…"
-            className="flex-1 rounded border px-2 py-1 text-sm"
-          />
-          <button
-            onClick={addTag}
-            className="rounded bg-blue-600 px-3 py-1 text-sm text-white"
+      {isLoading && <p className="text-gray-400">Loading highlights…</p>}
+
+      {highlights.length === 0 && !isLoading && (
+        <p className="text-gray-400 text-sm">No highlights yet</p>
+      )}
+
+      <ul className="space-y-3">
+        {highlights.map((h) => (
+          <li
+            key={h.id}
+            className="rounded-lg border border-gray-200 bg-white p-2 text-sm shadow-sm"
           >
-            Add
-          </button>
-        </div>
-        <div className="mt-2 flex flex-wrap gap-2">
-          {section.tags.map((t) => (
-            <span
-              key={t.id}
-              className="flex items-center gap-1 rounded-full bg-blue-50 text-blue-700 px-2 py-0.5 text-xs"
-            >
-              #{t.label}
-              <button
-                onClick={() => removeTag(t.id)}
-                className="ml-1 text-red-500 hover:underline"
+            <div className="mb-1">
+              <span
+                className={`inline-block rounded px-1 ${
+                  h.color === "yellow"
+                    ? "bg-yellow-200"
+                    : h.color === "green"
+                    ? "bg-green-200"
+                    : "bg-red-200"
+                }`}
               >
-                ✕
-              </button>
-            </span>
-          ))}
-        </div>
-      </div>
+                {h.excerpt}
+              </span>
+            </div>
 
-      {/* Highlights */}
-      <div>
-        <h4 className="font-medium text-sm">Highlights</h4>
-        {section.highlights.length === 0 ? (
-          <p className="text-sm text-gray-500">No highlights yet.</p>
-        ) : (
-          <ul className="space-y-2">
-            {section.highlights.map((h) => (
-              <li key={h.id} className="text-sm">
-                <div className="flex justify-between items-center">
-                  <span
-                    className={`px-1 rounded ${
-                      h.color === "yellow"
-                        ? "bg-yellow-200"
-                        : h.color === "green"
-                        ? "bg-green-200"
-                        : "bg-red-200"
-                    }`}
-                  >
-                    {h.text}
-                  </span>
+            {editing === h.id ? (
+              <div className="space-y-2">
+                <textarea
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  className="w-full rounded border border-gray-300 p-1 text-sm"
+                />
+                <div className="flex gap-2">
                   <button
-                    onClick={() => removeHighlight(h.id)}
-                    className="text-xs text-red-500 hover:underline"
+                    onClick={() => saveNote(h.id)}
+                    className="text-xs px-2 py-1 bg-blue-500 text-white rounded"
                   >
-                    ✕
+                    Save
+                  </button>
+                  <button
+                    onClick={() => setEditing(null)}
+                    className="text-xs px-2 py-1 bg-gray-200 rounded"
+                  >
+                    Cancel
                   </button>
                 </div>
-                <textarea
-                  placeholder="Add note…"
-                  defaultValue={h.note}
-                  onBlur={(e) => addNote(h.id, e.target.value)}
-                  className="mt-1 block w-full rounded border px-2 py-1 text-xs"
-                />
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      {/* ✅ Practice Generator */}
-      <div className="pt-4 border-t">
-        <button
-          onClick={generatePractice}
-          className="w-full rounded bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
-        >
-          ⚡ Generate Practice
-        </button>
-      </div>
-    </div>
+              </div>
+            ) : (
+              <div className="flex justify-between items-center">
+                <p className="text-gray-700">
+                  {h.note || <span className="text-gray-400">No note</span>}
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      setEditing(h.id);
+                      setDraft(h.note || "");
+                    }}
+                    className="text-xs text-blue-600"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => deleteHighlight(h.id)}
+                    className="text-xs text-red-600"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+    </aside>
   );
 }

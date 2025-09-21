@@ -59,7 +59,12 @@ export default function TopicCanvas({ topicId }: { topicId: string }) {
       )}
 
       {responses.map((r) => (
-        <ResponseCard key={r.id} resp={r} />
+        <ResponseCard
+          key={r.id}
+          resp={r}
+          topicId={topicId}
+          onHighlightCreated={() => mutate()}
+        />
       ))}
 
       <ReplyBox topicId={topicId} onNew={handleNewResponse} />
