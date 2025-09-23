@@ -99,7 +99,11 @@ func (h *Handlers) ExercisesGenerate(w http.ResponseWriter, r *http.Request, s *
 		return
 	}
 
-	userID := s.AccountID
+	// ✅ Safe handling: allow nil session
+	var userID uuid.UUID
+	if s != nil {
+		userID = s.AccountID
+	}
 	if userID == uuid.Nil {
 		// Optional fallback — only if h.did is a UUID string
 		if parsed, err := uuid.Parse(h.did); err == nil {
@@ -111,7 +115,6 @@ func (h *Handlers) ExercisesGenerate(w http.ResponseWriter, r *http.Request, s *
 		ID:     uuid.New().String(),
 		UserID: userID,
 		Title:  coalesce(req.Title, out.InferredTitle),
-		// ✅ Normalize AI output format before saving
 		Format: normalizeFormat(out.InferredFormat),
 		Questions: out.Questions,
 		Meta: db.ExerciseMeta{
@@ -129,6 +132,7 @@ func (h *Handlers) ExercisesGenerate(w http.ResponseWriter, r *http.Request, s *
 
 	WriteJSON(w, http.StatusOK, map[string]any{"exercise_set": set})
 }
+
 
 func parseUUIDPtr(s *string) *uuid.UUID {
     if s == nil {
