@@ -1,4 +1,4 @@
-import SettingsClient from "../components/SettingsClient";
+import SettingsClient from "@/app/components/util/SettingsClient";
 
 export const metadata = { title: "Settings · InkReaders" };
 
