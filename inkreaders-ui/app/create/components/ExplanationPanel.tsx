@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { useToast } from "@/app/components/ToastProvider";
+import { useToast } from "@/app/components/util/ToastProvider";
 import { API_BASE as GLOBAL_API_BASE } from "@/app/create/lib/api";
 
 const API_BASE = GLOBAL_API_BASE ?? process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";

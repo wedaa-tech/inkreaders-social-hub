@@ -2,7 +2,7 @@
 "use client";
 
 import { ReactNode } from "react";
-import LeftSidebar from "./LeftSidebar";
+import LeftSidebar from "../left/LeftSidebar";
 
 type ShellProps = {
   children: ReactNode;           // center column content

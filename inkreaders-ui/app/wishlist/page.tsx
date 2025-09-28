@@ -1,5 +1,5 @@
 // app/wishlist/page.tsx
-import Shell from "@/app/components/Shell";
+import Shell from "@/app/components/centre/Shell";
 import { TrendingBooks } from "@/app/components/right/TrendingBooks";
 
 function ListCard({ id, title, by, items }: { id: string; title: string; by: string; items: number }) {

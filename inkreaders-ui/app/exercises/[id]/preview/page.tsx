@@ -2,10 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import ExerciseQuestion from "@/components/ExerciseQuestion";
-import ProgressBar from "@/components/ProgressBar";
-import QuestionNavigator from "@/components/QuestionNavigator";
-import ExerciseResults from "@/components/ExerciseResults";
+import ExerciseQuestion from "@/app/components/exercise/ExerciseQuestion";
+import ProgressBar from "@/app/components/util/ProgressBar";
+import QuestionNavigator from "@/app/components/exercise/QuestionNavigator";
+import ExerciseResults from "@/app/components/exercise/ExerciseResults";
 import {
   normalizeExercise,
   Exercise,

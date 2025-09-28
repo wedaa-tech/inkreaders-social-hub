@@ -2,7 +2,7 @@
 "use client";
 
 import { useState } from "react";
-import Shell from "@/app/components/Shell";
+import Shell from "@/app/components/centre/Shell";
 import PromptBar from "@/app/notebook/components/PromptBar";
 import TopicCanvas from "@/app/notebook/components/TopicCanvas";
 import TopicNavigator from "@/app/notebook/components/TopicNavigator";

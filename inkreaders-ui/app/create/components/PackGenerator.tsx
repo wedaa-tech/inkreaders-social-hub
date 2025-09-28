@@ -3,7 +3,7 @@ import React, { useState } from "react";
 import { FaMagic, FaSpinner, IoIosWarning } from "@/app/create/components/icons";
 import PreviewCard from "@/app/create/components/PreviewCard";
 import { usePublish } from "@/app/create/lib/publish";
-import { useToast } from "@/app/components/ToastProvider";
+import { useToast } from "@/app/components/util/ToastProvider";
 import { API_BASE } from "@/app/create/lib/api";
 
 // Define the type for a Section, making it explicit.

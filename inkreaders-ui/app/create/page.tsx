@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState } from "react";
-import Shell from "@/app/components/Shell";
+import Shell from "@/app/components/centre/Shell";
 import CreateTabs, { TabKey } from "@/app/create/components/CreateTabs";
 import StoryComposer from "@/app/create/components/StoryComposer";
 import ExerciseGenerator from "@/app/create/components/ExerciseGenerator";

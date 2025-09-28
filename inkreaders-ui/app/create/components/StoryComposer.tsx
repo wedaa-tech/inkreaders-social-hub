@@ -3,7 +3,7 @@ import React, { useState } from "react";
 import { FaMagic } from "@/app/create/components/icons";
 import PreviewCard from "@/app/create/components/PreviewCard";
 import { usePublish } from "@/app/create/lib/publish"; // if you prefer default import adjust
-import { useToast } from "@/app/components/ToastProvider";
+import { useToast } from "@/app/components/util/ToastProvider";
 
 export default function StoryComposer() {
   const { publishAsNote } = usePublish();

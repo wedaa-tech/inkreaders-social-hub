@@ -7,7 +7,7 @@ import PackCanvas from "./PackCanvas";
 import InspectorPanel from "./InspectorPanel";
 import { Pack, Section } from "./types";
 import { generateMockPack, mockQuizFromText } from "./mock";
-import { useToast } from "@/app/components/ToastProvider";
+import { useToast } from "@/app/components/util/ToastProvider";
 
 export default function PackBuilder() {
   const { push } = useToast();

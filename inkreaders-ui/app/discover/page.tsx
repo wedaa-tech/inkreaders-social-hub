@@ -1,5 +1,5 @@
 // app/discover/page.tsx
-import Shell from "@/app/components/Shell";
+import Shell from "@/app/components/centre/Shell";
 import WhoToFollow from "@/app/components/right/WhoToFollow";
 import { TrendingBooks } from "@/app/components/right/TrendingBooks";
 import Link from "next/link";

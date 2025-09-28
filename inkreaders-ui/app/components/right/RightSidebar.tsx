@@ -2,8 +2,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { postJSON } from "../../lib/api";
-import { useToast } from "./ToastProvider";
+import { postJSON } from "../../../lib/api";
+import { useToast } from "../util/ToastProvider";
 
 type TrendingItem = {
   bookId: number; 

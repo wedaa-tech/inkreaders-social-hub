@@ -5,7 +5,7 @@ import React, { useState } from "react";
 import { FaSpinner } from "@/app/create/components/icons";
 import PreviewCard from "@/app/create/components/PreviewCard";
 import { normalizeExercise, Exercise as NormalizedExercise } from "@/lib/normalizeExercise";
-import { useToast } from "@/app/components/ToastProvider";
+import { useToast } from "@/app/components/util/ToastProvider";
 import { API_BASE } from "@/app/create/lib/api";
 import QuestionPreview from "./QuestionPreview";
 
