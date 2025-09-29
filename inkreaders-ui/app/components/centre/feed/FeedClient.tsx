@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useToast } from "../util/ToastProvider";
+import { useToast } from "../../util/ToastProvider";
 import Composer from "./Composer";
 import PostCard from "./PostCard";
 import { extractImages, extractExternal } from "./helpers";

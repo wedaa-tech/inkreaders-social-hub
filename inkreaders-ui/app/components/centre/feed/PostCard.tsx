@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from "react";
 import Card from "@/app/components/ui/Card";
-import { useToast } from "../util/ToastProvider";
+import { useToast } from "../../util/ToastProvider";
 import { renderTextWithLinks } from "./helpers";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";

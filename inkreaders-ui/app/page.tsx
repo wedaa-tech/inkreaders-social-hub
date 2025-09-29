@@ -1,6 +1,6 @@
 // app/page.tsx
 import Shell from "./components/centre/Shell";
-import FeedClient from "./components/feed/FeedClient";   // ✅ updated import
+import FeedClient from "./components/centre/feed/FeedClient";   // ✅ updated import
 import RightSidebar from "./components/right/RightSidebar";
 
 export default function Home() {

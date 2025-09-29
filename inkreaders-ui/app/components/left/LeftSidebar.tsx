@@ -1,4 +1,3 @@
-// app/components/LeftSidebar.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -7,7 +6,7 @@ import { useSession, signOut } from "next-auth/react";
 
 import Modal from "../ui/Modal";
 import ConnectBlueskyForm from "@/app/bluesky/ConnectBlueskyForm";
-import PrimaryButton from "../ui/PrimaryButton";
+import SignInModal from "@/app/components/auth/SignInModal";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
 
@@ -20,12 +19,12 @@ type Me = {
 };
 
 export default function LeftSidebar() {
-  const { data: session, status } = useSession(); // NextAuth (OAuth) state
+  const { data: session, status } = useSession();
   const [me, setMe] = useState<Me | null>(null);
   const [loadingMe, setLoadingMe] = useState(true);
   const [showConnectModal, setShowConnectModal] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
 
-  // Check Bluesky connection (ink_sid)
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -54,19 +53,14 @@ export default function LeftSidebar() {
         credentials: "include",
       });
     } catch {}
-    // Only logs out Bluesky connection (keeps Google session)
     setMe(null);
   }
 
-  // inside LeftSidebar.tsx
   const NAV = [
     { label: "Home", icon: "🏠", href: "/" },
-    //  { label: "Discover", icon: "🔎", href: "/discover" },
-    //  { label: "Wishlist", icon: "📚", href: "/wishlist" },
     { label: "Create", icon: "✍️", href: "/create" },
-    { label: "Notebook", icon: "📒", href: "/notebook" }, // 👈 new entry
-    { label: "Exercises", icon: "📝", href: "/exercises/mine" }, // 👈 added
-    //  { label: "Notifications", icon: "🔔", href: "/notifications" },
+    { label: "Notebook", icon: "📒", href: "/notebook" },
+    { label: "Exercises", icon: "📝", href: "/exercises/mine" },
     {
       label: "Profile",
       icon: "👤",
@@ -117,7 +111,7 @@ export default function LeftSidebar() {
         </div>
       </div>
 
-      {/* Profile mini-card (OAuth + Bluesky awareness) */}
+      {/* Profile mini-card */}
       <div className="rounded-2xl border border-gray-200 bg-white p-4">
         {status === "loading" || loadingMe ? (
           <div className="flex items-center gap-3 animate-pulse">
@@ -128,7 +122,6 @@ export default function LeftSidebar() {
             </div>
           </div>
         ) : !isOAuth ? (
-          // Not signed into InkReaders (OAuth)
           <div className="space-y-3">
             <div>
               <div className="font-semibold">Welcome</div>
@@ -136,15 +129,14 @@ export default function LeftSidebar() {
                 Sign in to post & engage
               </div>
             </div>
-            <Link
-              href="/login"
+            <button
+              onClick={() => setShowLoginModal(true)}
               className="w-full block text-center rounded-lg bg-[color:var(--color-brand)] px-3 py-2 text-sm font-medium text-white hover:opacity-90"
             >
               Sign in
-            </Link>
+            </button>
           </div>
         ) : (
-          // Signed into InkReaders
           <div className="space-y-3">
             <div className="flex items-center gap-3">
               <div className="h-10 w-10 rounded-full bg-gray-200" />
@@ -171,7 +163,7 @@ export default function LeftSidebar() {
           </div>
         )}
 
-        {/* Bluesky Connect always visible */}
+        {/* Bluesky Connect */}
         <div className="mt-3">
           {!me ? (
             <button
@@ -192,7 +184,7 @@ export default function LeftSidebar() {
         </div>
       </div>
 
-      {/* Bluesky Connect Modal */}
+      {/* Modals */}
       {showConnectModal && (
         <Modal onClose={() => setShowConnectModal(false)}>
           <h1 className="text-xl font-bold mb-4">Connect Bluesky</h1>
@@ -202,6 +194,8 @@ export default function LeftSidebar() {
           />
         </Modal>
       )}
+
+      <SignInModal open={showLoginModal} onClose={() => setShowLoginModal(false)} />
     </nav>
   );
 }
