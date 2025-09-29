@@ -5,8 +5,8 @@ import { ReactNode } from "react";
 import LeftSidebar from "../left/LeftSidebar";
 
 type ShellProps = {
-  children: ReactNode;           // center column content
-  right?: ReactNode;             // optional right rail
+  children: ReactNode; // center column content
+  right?: ReactNode; // optional right rail
   /**
    * If true, the outer container uses full viewport width (no max-width).
    * Useful for feed / home where you want full-bleed content while retaining left sidebar.
@@ -20,46 +20,47 @@ type ShellProps = {
   expandCenter?: boolean;
 };
 
-export default function Shell({ children, right, fullWidth = false, expandCenter = false }: ShellProps) {
-  // outer wrapper classes — either constrained mx-auto max-w-7xl or full width
-  const containerClass = fullWidth ? "mx-0 px-3 sm:px-4 w-full" : "mx-auto max-w-7xl px-3 sm:px-4";
-
-  /**
-   * Grid template:
-   * - default: 2 cols at lg (left + center)
-   * - xl: 3 cols (left + center + right)
-   *
-   * We'll keep the grid template fixed, but if expandCenter is true and right is not provided,
-   * we'll let the center <main> span 2 columns on xl so it occupies middle + right area.
-   */
-  const mainColClass = right ? "min-w-0 space-y-4 border-r border-gray-200" : (expandCenter ? "min-w-0 space-y-4 border-r border-gray-200 xl:col-span-2" : "min-w-0 space-y-4 border-r border-gray-200");
+// app/components/centre/Shell.tsx
+export default function Shell({
+  children,
+  right,
+  fullWidth = false,
+  expandCenter = false,
+}: ShellProps) {
+  const containerClass = fullWidth
+    ? "mx-0 px-3 sm:px-4 w-full"
+    : "mx-auto max-w-7xl px-3 sm:px-4";
+  const mainColClass = right
+    ? "min-w-0 space-y-4 border-r border-gray-200 overflow-y-auto"
+    : expandCenter
+    ? "min-w-0 space-y-4 border-r border-gray-200 overflow-y-auto xl:col-span-2"
+    : "min-w-0 space-y-4 border-r border-gray-200 overflow-y-auto";
 
   return (
-    <div className={containerClass}>
+    <div className={`${containerClass} min-h-screen`}>
       <div
         className="
-          grid gap-0
-          lg:grid-cols-[260px_minmax(0,1fr)]
-          xl:grid-cols-[260px_minmax(0,1fr)_320px]
-          border-x border-gray-200 bg-gray-50
-        "
+    grid gap-0 relative z-0
+    lg:grid-cols-[260px_minmax(0,1fr)]
+    xl:grid-cols-[260px_minmax(0,1fr)_320px]
+    border-x border-gray-200 bg-gray-50
+    min-h-screen
+  "
       >
-        {/* Left */}
-        <aside className="hidden lg:block border-r border-gray-200">
-          <div className="sticky top-4 self-start">
+        {/* Left (sticky, non-scrolling) */}
+        <aside className="hidden lg:block border-r border-gray-200 pt-4">
+          <div className="sticky top-4">
             <LeftSidebar />
           </div>
         </aside>
 
-        {/* Center */}
-        <main className={mainColClass}>
-          {children}
-        </main>
+        {/* Center (scrollable) */}
+        <main className={`${mainColClass} pt-4`}>{children}</main>
 
-        {/* Right */}
+        {/* Right (sticky, optional) */}
         {right ? (
-          <aside className="hidden xl:block">
-            <div className="sticky top-4 self-start">{right}</div>
+          <aside className="hidden xl:block border-l border-gray-200 pt-4">
+            <div className="sticky top-4">{right}</div>
           </aside>
         ) : null}
       </div>

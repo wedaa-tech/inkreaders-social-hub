@@ -1,8 +1,9 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+:root{
+  --color-brand: #2563eb;
+  --card-shadow: 0 6px 18px rgba(15,23,42,0.06);
+  --card-radius: 16px;
 }
 
 @theme inline {
@@ -71,3 +72,22 @@ body {
   border-radius: 2px;
 }
 
+input, textarea, select {
+  border-radius: 12px;
+}
+
+.shadow-sm {
+  box-shadow: var(--card-shadow);
+}
+
+button, a {
+  transition: all 150ms ease;
+}
+.center-pad {
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+.rounded-2xl > h1, .rounded-2xl > h2 {
+  line-height: 1.15;
+}

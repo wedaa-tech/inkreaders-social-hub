@@ -4,8 +4,10 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession, signOut } from "next-auth/react";
-import Modal from "../Modal";
-import ConnectBlueskyForm from "../ConnectBlueskyForm";
+
+import Modal from "../ui/Modal";
+import ConnectBlueskyForm from "@/app/bluesky/ConnectBlueskyForm";
+import PrimaryButton from "../ui/PrimaryButton";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
 
@@ -83,7 +85,7 @@ export default function LeftSidebar() {
         <div className="flex items-center gap-3">
           <div className="h-10 w-10 rounded-xl bg-[color:var(--color-brand)]" />
           <div>
-            <h1 className="text-xl font-bold">InkReaders</h1>
+            <h1 className="text-xl font-bold leading-tight">InkReaders</h1>
             <p className="text-sm text-gray-500">read • share • connect</p>
           </div>
         </div>

@@ -836,16 +836,17 @@ export default function FeedClient() {
 
   return (
     <div className="space-y-4">
+      {/* Composer at top, aligned with Left/Right top blocks */}
       <Composer onPost={handlePost} />
 
       {/* Feed tabs */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-2">
+      <div className="rounded-2xl border border-gray-200 bg-white p-2 shadow-sm">
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => setFeedSource("app")}
             className={
-              "rounded-xl px-3 py-1 text-sm " +
+              "rounded-xl px-3 py-1 text-sm font-medium transition " +
               (feedSource === "app"
                 ? "bg-[color:var(--color-brand)] text-white"
                 : "bg-gray-100 text-gray-700 hover:bg-gray-200")
@@ -858,7 +859,7 @@ export default function FeedClient() {
             type="button"
             onClick={() => setFeedSource("user")}
             className={
-              "rounded-xl px-3 py-1 text-sm " +
+              "rounded-xl px-3 py-1 text-sm font-medium transition " +
               (feedSource === "user"
                 ? "bg-[color:var(--color-brand)] text-white"
                 : "bg-gray-100 text-gray-700 hover:bg-gray-200")
@@ -876,34 +877,45 @@ export default function FeedClient() {
           </div>
         </div>
       </div>
+
+      {/* Bluesky not connected warning */}
       {!bsConnected && feedSource === "user" && (
-        <div className="ml-auto text-sm text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg">
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
           Connect Bluesky to see your following feed.{" "}
-          <a className="underline" href="/settings">
+          <a className="underline font-medium" href="/settings">
             Connect now
           </a>
         </div>
       )}
 
+      {/* Loading state */}
       {loading && (
-        <div className="rounded-2xl border border-gray-200 bg-white p-4">
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm text-gray-500">
           Loading…
         </div>
       )}
+
+      {/* Error state */}
       {error && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700">
-          {error}
-          <button onClick={loadTimeline} className="ml-3 underline">
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700 flex items-center justify-between">
+          <span>{error}</span>
+          <button
+            onClick={loadTimeline}
+            className="ml-3 underline text-sm font-medium"
+          >
             Retry
           </button>
         </div>
       )}
+
+      {/* Empty state */}
       {!loading && !error && posts.length === 0 && (
-        <div className="rounded-2xl border border-gray-200 bg-white p-4 text-gray-500">
-          {" "}
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 text-gray-500 text-center shadow-sm">
           Nothing here yet — follow more readers or post your first note! ✨
         </div>
       )}
+
+      {/* Posts */}
       {!loading &&
         !error &&
         posts.length > 0 &&
