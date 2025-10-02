@@ -1,5 +1,5 @@
 // app/page.tsx
-import Shell from "./components/centre/Shell";
+import Shell from "@/app/components/centre/Shell";
 import FeedClient from "./components/centre/feed/FeedClient";   // ✅ updated import
 import RightSidebar from "./components/right/RightSidebar";
 

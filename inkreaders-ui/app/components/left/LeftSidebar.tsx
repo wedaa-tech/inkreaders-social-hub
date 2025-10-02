@@ -1,8 +1,8 @@
+// LeftSidebar.tsx
 "use client";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useSession, signOut } from "next-auth/react";
 
 import Modal from "../ui/Modal";
 import ConnectBlueskyForm from "@/app/bluesky/ConnectBlueskyForm";
@@ -11,42 +11,56 @@ import SignInModal from "@/app/components/auth/SignInModal";
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
 
 type Me = {
-  did: string;
-  handle: string;
-  pds: string;
+  did?: string;
+  handle?: string;
+  pds?: string;
   avatar_url?: string;
   display_name?: string;
+  user_id?: string;
 };
 
 export default function LeftSidebar() {
-  const { data: session, status } = useSession();
   const [me, setMe] = useState<Me | null>(null);
   const [loadingMe, setLoadingMe] = useState(true);
   const [showConnectModal, setShowConnectModal] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
 
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const res = await fetch(`${API_BASE}/api/auth/me`, {
-          credentials: "include",
-        });
-        if (!alive) return;
-        if (res.ok) setMe(await res.json());
-        else setMe(null);
-      } catch {
-        if (alive) setMe(null);
-      } finally {
-        if (alive) setLoadingMe(false);
+  // helper to fetch /me
+  async function fetchMe() {
+    setLoadingMe(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/me`, {
+        credentials: "include",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMe(data);
+      } else {
+        setMe(null);
       }
-    })();
-    return () => {
-      alive = false;
-    };
+    } catch {
+      setMe(null);
+    } finally {
+      setLoadingMe(false);
+    }
+  }
+
+  // run once on mount
+  useEffect(() => {
+    fetchMe();
   }, []);
 
-  async function logoutBluesky() {
+  // 🔧 listen for custom auth event from SignInModal
+  useEffect(() => {
+    const handler = () => {
+      console.log("🔔 auth changed, refetching /me");
+      fetchMe();
+    };
+    window.addEventListener("ink:auth-changed", handler);
+    return () => window.removeEventListener("ink:auth-changed", handler);
+  }, []);
+
+  async function logoutAll() {
     try {
       await fetch(`${API_BASE}/api/auth/logout`, {
         method: "POST",
@@ -54,6 +68,8 @@ export default function LeftSidebar() {
       });
     } catch {}
     setMe(null);
+    // 🔧 also notify rest of app
+    window.dispatchEvent(new CustomEvent("ink:auth-changed"));
   }
 
   const NAV = [
@@ -61,16 +77,13 @@ export default function LeftSidebar() {
     { label: "Create", icon: "✍️", href: "/create" },
     { label: "Notebook", icon: "📒", href: "/notebook" },
     { label: "Exercises", icon: "📝", href: "/exercises/mine" },
-    {
-      label: "Profile",
-      icon: "👤",
-      href: me ? `/u/${me.handle}` : "/settings",
-    },
+    { label: "Profile", icon: "👤", href: me ? `/u/${me.handle}` : "/settings" },
     { label: "Settings", icon: "⚙️", href: "/settings" },
   ];
 
-  const isOAuth = status === "authenticated";
-  const userName = session?.user?.name || session?.user?.email || "You";
+  const isLoggedIn = !!me;
+  const userName =
+    (me && (me.display_name || me.handle || me.user_id)) || "You";
 
   return (
     <nav className="space-y-4">
@@ -113,7 +126,7 @@ export default function LeftSidebar() {
 
       {/* Profile mini-card */}
       <div className="rounded-2xl border border-gray-200 bg-white p-4">
-        {status === "loading" || loadingMe ? (
+        {loadingMe ? (
           <div className="flex items-center gap-3 animate-pulse">
             <div className="h-10 w-10 rounded-full bg-gray-200" />
             <div className="flex-1 space-y-2">
@@ -121,7 +134,7 @@ export default function LeftSidebar() {
               <div className="h-3 w-1/3 rounded bg-gray-200" />
             </div>
           </div>
-        ) : !isOAuth ? (
+        ) : !isLoggedIn ? (
           <div className="space-y-3">
             <div>
               <div className="font-semibold">Welcome</div>
@@ -142,19 +155,19 @@ export default function LeftSidebar() {
               <div className="h-10 w-10 rounded-full bg-gray-200" />
               <div className="min-w-0">
                 <p className="truncate font-semibold">{userName}</p>
-                {me ? (
+                {me && me.handle ? (
                   <p className="truncate text-sm text-gray-500">
                     @{me.handle} (Bluesky)
                   </p>
                 ) : (
                   <p className="truncate text-sm text-gray-500">
-                    Not connected to Bluesky
+                    Connected (no Bluesky)
                   </p>
                 )}
               </div>
             </div>
             <button
-              onClick={() => signOut({ callbackUrl: "/" })}
+              onClick={logoutAll}
               className="w-full rounded-lg border px-3 py-2 text-sm text-gray-600 hover:bg-gray-50"
               type="button"
             >
@@ -174,7 +187,14 @@ export default function LeftSidebar() {
             </button>
           ) : (
             <button
-              onClick={logoutBluesky}
+              onClick={async () => {
+                await fetch(`${API_BASE}/api/auth/logout`, {
+                  method: "POST",
+                  credentials: "include",
+                });
+                setMe(null);
+                window.dispatchEvent(new CustomEvent("ink:auth-changed"));
+              }}
               className="w-full rounded-lg border px-3 py-2 text-sm hover:bg-gray-50"
               type="button"
             >
@@ -195,7 +215,10 @@ export default function LeftSidebar() {
         </Modal>
       )}
 
-      <SignInModal open={showLoginModal} onClose={() => setShowLoginModal(false)} />
+      <SignInModal
+        open={showLoginModal}
+        onClose={() => setShowLoginModal(false)}
+      />
     </nav>
   );
 }

@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"errors"
+	"os"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -12,13 +13,31 @@ type Store struct {
 	Pool *pgxpool.Pool
 }
 
+// db.go — modify Open
 func Open(ctx context.Context, dsn string) (*Store, error) {
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
 		return nil, err
 	}
+
+	// Decide which schema to use (default "app")
+	schema := os.Getenv("DB_SCHEMA")
+	if schema == "" {
+		schema = "app"
+	}
+
+	// Set the search_path for this connection pool so unqualified table names
+	// resolve to schema, then public.
+	// This affects all subsequent queries on connections from the pool.
+	if _, err := pool.Exec(ctx, "SET search_path TO "+schema+", public"); err != nil {
+		// Close pool on failure to avoid leaking resources
+		pool.Close()
+		return nil, err
+	}
+
 	return &Store{Pool: pool}, nil
 }
+
 
 func (s *Store) Close() { s.Pool.Close() }
 

@@ -152,6 +152,28 @@ export default function FeedClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [feedSource]);
 
+  useEffect(() => {
+  const handler = () => {
+    console.log("🔔 auth changed, reloading feed & prefs");
+    loadTimeline();
+    // optionally refetch prefs
+    (async () => {
+      try {
+        const r = await fetch(`${API_BASE}/api/prefs`, { credentials: "include" });
+        if (r.ok) {
+          const j = await r.json();
+          if (j.defaultFeed === "user" || j.defaultFeed === "app") {
+            setFeedSource(j.defaultFeed);
+          }
+        }
+      } catch {}
+    })();
+  };
+  window.addEventListener("ink:auth-changed", handler);
+  return () => window.removeEventListener("ink:auth-changed", handler);
+}, []);
+
+
   /* ---------- posting handler ---------- */
   async function handlePost(
     p: Omit<Post, "id" | "createdAt" | "likes" | "reposts" | "replies">

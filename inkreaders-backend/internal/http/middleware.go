@@ -1,75 +1,147 @@
 package http
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"time"
+	"errors"
+	"strings"
+
+	"github.com/google/uuid"
 )
 
-// NOTE: We no longer need SessionMiddleware; Auth already holds Store & Box.
-// type SessionMiddleware struct { ... }  // <-- delete this struct if present
-
+// ResolveSession resolves the ink_sid cookie (session_token) to session + account details.
+// It expects sessions to be stored as (session_token, user_id, expires_at, created_at, last_seen_at)
+// and will prefer to populate account info from the user's Bluesky account (provider='bluesky').
+// Returns an error if session not found or expired.
 func (a *Auth) ResolveSession(r *http.Request) (*SessionData, error) {
-	sid, err := r.Cookie("ink_sid")
+	// cookie
+	c, err := r.Cookie("ink_sid")
+	if err != nil {
+		return nil, err
+	}
+	sessTok := strings.TrimSpace(c.Value)
+	if sessTok == "" {
+		return nil, errors.New("no session token")
+	}
+
+	ctx := r.Context()
+
+	// 1) lookup session -> get user_id and expires_at
+	var userID uuid.UUID
+	var sessExpires time.Time
+	err = a.Store.Pool.QueryRow(ctx, `
+		SELECT user_id, expires_at
+		FROM sessions
+		WHERE session_token = $1
+		LIMIT 1
+	`, sessTok).Scan(&userID, &sessExpires)
 	if err != nil {
 		return nil, err
 	}
 
-	var sd SessionData
-	var encA, encR []byte
-
-	row := a.Store.Pool.QueryRow(r.Context(), `
-	  select a.id, a.did, a.handle, a.pds_base, a.access_jwt, a.refresh_jwt, a.session_expires_at
-	  from sessions s join accounts a on s.account_id = a.id
-	  where s.id = $1
-	`, sid.Value)
-
-	if err := row.Scan(&sd.AccountID, &sd.DID, &sd.Handle, &sd.PDSBase, &encA, &encR, &sd.ExpiresAt); err != nil {
-		return nil, err
+	// 2) check expiry if set
+	if !sessExpires.IsZero() && time.Now().After(sessExpires) {
+		// session expired: delete and return error
+		_, _ = a.Store.Pool.Exec(ctx, `DELETE FROM sessions WHERE session_token = $1`, sessTok)
+		return nil, errors.New("session expired")
 	}
 
-	plainA, _ := a.Box.Open(encA)
-	plainR, _ := a.Box.Open(encR)
-	sd.AccessJWT = string(plainA)
-	sd.RefreshJWT = string(plainR)
+	sd := &SessionData{
+		UserID: userID,
+	}
 
-	// Refresh if near expiry (5m window)
-	if time.Until(sd.ExpiresAt) < 5*time.Minute {
-		req, _ := http.NewRequestWithContext(r.Context(), "POST", sd.PDSBase+"/xrpc/com.atproto.server.refreshSession", nil)
-		req.Header.Set("Authorization", "Bearer "+sd.RefreshJWT)
-		resp, err := http.DefaultClient.Do(req)
-		if err == nil {
-			defer resp.Body.Close()
-			if resp.StatusCode == 200 {
-				var ses struct {
-					AccessJwt   string `json:"accessJwt"`
-					RefreshJwt  string `json:"refreshJwt"`
-					ActiveUntil string `json:"activeUntil"`
+	// 3) Prefer to fetch the user's Bluesky account to populate provider-specific fields
+	var acctID uuid.UUID
+	var provider, provAcctID string
+	var provData []byte
+	var encAccessB64, encRefreshB64 string
+	var acctExpires time.Time
+
+	err = a.Store.Pool.QueryRow(ctx, `
+		SELECT id, provider, provider_account_id, provider_data, access_token, refresh_token, expires_at
+		FROM accounts
+		WHERE user_id = $1 AND provider = 'bluesky'
+		LIMIT 1
+	`, userID).Scan(&acctID, &provider, &provAcctID, &provData, &encAccessB64, &encRefreshB64, &acctExpires)
+
+	if err == nil {
+		// populate from bluesky account row
+		sd.AccountID = acctID
+		sd.DID = provAcctID
+		// provider_data (JSON) may contain handle/pds_base
+		var pd map[string]any
+		_ = json.Unmarshal(provData, &pd)
+		if h, ok := pd["handle"].(string); ok {
+			sd.Handle = h
+		}
+		if p, ok := pd["pds_base"].(string); ok {
+			sd.PDSBase = p
+		}
+		// decrypt access token
+		if encAccessB64 != "" {
+			if raw, derr := base64.StdEncoding.DecodeString(encAccessB64); derr == nil {
+				if plain, oerr := a.Box.Open(raw); oerr == nil {
+					sd.AccessJWT = string(plain)
 				}
-				_ = json.NewDecoder(resp.Body).Decode(&ses)
-
-				encAccess, _ := a.Box.Seal([]byte(ses.AccessJwt))
-				encRefresh, _ := a.Box.Seal([]byte(ses.RefreshJwt))
-
-				sd.AccessJWT = ses.AccessJwt
-				sd.RefreshJWT = ses.RefreshJwt
-				sd.ExpiresAt = parseActiveUntil(ses.ActiveUntil)
-
-				// Persist new tokens
-				_, _ = a.Store.Pool.Exec(r.Context(), `
-				  update accounts
-				  set access_jwt = $1,
-				      refresh_jwt = $2,
-				      session_expires_at = $3,
-				      updated_at = now()
-				  where id = $4
-				`, encAccess, encRefresh, sd.ExpiresAt, sd.AccountID)
+			}
+		}
+		if encRefreshB64 != "" {
+			if raw, derr := base64.StdEncoding.DecodeString(encRefreshB64); derr == nil {
+				if plain, oerr := a.Box.Open(raw); oerr == nil {
+					sd.RefreshJWT = string(plain)
+				}
+			}
+		}
+		if !acctExpires.IsZero() {
+			sd.ExpiresAt = acctExpires
+		}
+	} else {
+		// no bluesky account found - try to pick any account row for this user (non-fatal)
+		err2 := a.Store.Pool.QueryRow(ctx, `
+			SELECT id, provider, provider_account_id, provider_data, access_token, refresh_token, expires_at
+			FROM accounts
+			WHERE user_id = $1
+			LIMIT 1
+		`, userID).Scan(&acctID, &provider, &provAcctID, &provData, &encAccessB64, &encRefreshB64, &acctExpires)
+		if err2 == nil {
+			sd.AccountID = acctID
+			var pd map[string]any
+			_ = json.Unmarshal(provData, &pd)
+			if h, ok := pd["handle"].(string); ok {
+				sd.Handle = h
+			}
+			if p, ok := pd["pds_base"].(string); ok {
+				sd.PDSBase = p
+			}
+			if encAccessB64 != "" {
+				if raw, derr := base64.StdEncoding.DecodeString(encAccessB64); derr == nil {
+					if plain, oerr := a.Box.Open(raw); oerr == nil {
+						sd.AccessJWT = string(plain)
+					}
+				}
+			}
+			if encRefreshB64 != "" {
+				if raw, derr := base64.StdEncoding.DecodeString(encRefreshB64); derr == nil {
+					if plain, oerr := a.Box.Open(raw); oerr == nil {
+						sd.RefreshJWT = string(plain)
+					}
+				}
+			}
+			if !acctExpires.IsZero() {
+				sd.ExpiresAt = acctExpires
 			}
 		}
 	}
 
-	return &sd, nil
+	// 4) update last_seen_at (best-effort)
+	_, _ = a.Store.Pool.Exec(ctx, `UPDATE sessions SET last_seen_at = now() WHERE session_token = $1`, sessTok)
+
+	return sd, nil
 }
+
+
 
 // Require a valid session
 func (a *Auth) WithSession(next func(http.ResponseWriter, *http.Request, *SessionData)) http.HandlerFunc {
