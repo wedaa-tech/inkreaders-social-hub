@@ -4,6 +4,7 @@
 import React, { useState } from "react";
 import { useToast } from "@/app/components/util/ToastProvider";
 import { API_BASE as GLOBAL_API_BASE } from "@/app/create/lib/api";
+import { apiFetchJson } from "@/lib/api";
 
 const API_BASE = GLOBAL_API_BASE ?? process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
 
@@ -33,8 +34,8 @@ export default function ExplanationPanel({ questionId, prompt, answer, onSaveExp
     setError(null);
 
     try {
+      
       const body = { question_id: questionId, prompt, answer: answer ?? null };
-
       const res = await fetch(`${API_BASE}/api/exercises/explain`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -47,8 +48,11 @@ export default function ExplanationPanel({ questionId, prompt, answer, onSaveExp
         throw new Error(txt || "Failed to generate explanation");
       }
 
-      const data = await res.json();
-      const text = data?.explanation ? String(data.explanation) : "No explanation returned.";
+      const data = await apiFetchJson<{ explanation: string }>("/api/exercises/explain", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+      const text = data?.explanation || "No explanation returned.";
       setExplanation(text);
       setOpen(true);
 

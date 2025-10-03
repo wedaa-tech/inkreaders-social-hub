@@ -68,7 +68,7 @@ func toJSON(v any) []byte {
 
 func (s *Store) InsertExerciseSet(ctx context.Context, set *ExerciseSet) error {
 	_, err := s.Pool.Exec(ctx, `
-		INSERT INTO exercise_sets
+		INSERT INTO app.exercise_sets
 			(id, user_id, title, format, questions, meta, visibility, parent_set_id, at_uri, cid, feed_uri, created_at, updated_at)
 		VALUES
 			($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7,$8,$9,$10,$11, now(), now())
@@ -79,9 +79,9 @@ func (s *Store) InsertExerciseSet(ctx context.Context, set *ExerciseSet) error {
 			meta=EXCLUDED.meta,
 			visibility=EXCLUDED.visibility,
 			parent_set_id=EXCLUDED.parent_set_id,
-			at_uri=COALESCE(EXCLUDED.at_uri, exercise_sets.at_uri),
-			cid=COALESCE(EXCLUDED.cid, exercise_sets.cid),
-			feed_uri=COALESCE(EXCLUDED.feed_uri, exercise_sets.feed_uri),
+			at_uri=COALESCE(EXCLUDED.at_uri, app.exercise_sets.at_uri),
+			cid=COALESCE(EXCLUDED.cid, app.exercise_sets.cid),
+			feed_uri=COALESCE(EXCLUDED.feed_uri, app.exercise_sets.feed_uri),
 			updated_at=now()
 	`, set.ID, set.UserID, set.Title, set.Format, toJSON(set.Questions), toJSON(set.Meta),
 		set.Visibility, set.ParentSetID, set.ATURI, set.CID, set.FeedURI)
@@ -91,11 +91,10 @@ func (s *Store) InsertExerciseSet(ctx context.Context, set *ExerciseSet) error {
 func (s *Store) GetExerciseSet(ctx context.Context, id string, owner uuid.UUID) (*ExerciseSet, error) {
 	var e ExerciseSet
 	var qjson, mjson []byte
-
 	err := s.Pool.QueryRow(ctx, `
 		SELECT id, user_id, title, format, questions, meta, visibility,
 		       parent_set_id, at_uri, cid, feed_uri, created_at, updated_at
-		FROM exercise_sets
+		FROM app.exercise_sets
 		WHERE id=$1 AND user_id=$2
 	`, id, owner).Scan(
 		&e.ID, &e.UserID, &e.Title, &e.Format,
@@ -141,9 +140,10 @@ func (s *Store) UpdateExerciseSet(ctx context.Context, id string, owner uuid.UUI
 	return s.InsertExerciseSet(ctx, existing)
 }
 
+
 func (s *Store) MarkPublished(ctx context.Context, id string, owner uuid.UUID, atURI, cid, feedURI string) error {
 	_, err := s.Pool.Exec(ctx, `
-		UPDATE exercise_sets
+		UPDATE app.exercise_sets
 		SET at_uri=$1, cid=$2, feed_uri=$3, updated_at=now()
 		WHERE id=$4 AND user_id=$5
 	`, atURI, cid, feedURI, id, owner)
@@ -152,12 +152,11 @@ func (s *Store) MarkPublished(ctx context.Context, id string, owner uuid.UUID, a
 
 func (s *Store) ListExerciseSets(ctx context.Context, owner uuid.UUID, cursor string, limit int, visibility string) ([]ExerciseSet, string, error) {
 	if limit <= 0 {
-		limit = 20
+	limit = 20
 	}
-
 	rows, err := s.Pool.Query(ctx, `
 		SELECT id, user_id, title, format, meta, visibility, parent_set_id, at_uri, cid, feed_uri, created_at, updated_at
-		FROM exercise_sets
+		FROM app.exercise_sets
 		WHERE user_id=$1
 		ORDER BY created_at DESC
 		LIMIT $2
@@ -200,7 +199,7 @@ type File struct {
 
 func (s *Store) InsertFile(ctx context.Context, f *File) error {
 	_, err := s.Pool.Exec(ctx, `
-		INSERT INTO files (id, user_id, mime, storage_key, pages, chars)
+		INSERT INTO app.files (id, user_id, mime, storage_key, pages, chars)
 		VALUES ($1,$2,$3,$4,$5,$6)
 	`, f.ID, f.UserID, f.Mime, f.StorageKey, f.Pages, f.Chars)
 	return err
@@ -210,7 +209,7 @@ func (s *Store) GetFile(ctx context.Context, id string, owner uuid.UUID) (File, 
 	var f File
 	err := s.Pool.QueryRow(ctx, `
 		SELECT id, user_id, mime, storage_key, pages, chars
-		FROM files
+		FROM app.files
 		WHERE id=$1 AND user_id=$2
 	`, id, owner).Scan(&f.ID, &f.UserID, &f.Mime, &f.StorageKey, &f.Pages, &f.Chars)
 	return f, err

@@ -1,3 +1,4 @@
+// app/exercises/[id]/page.tsx
 "use client";
 
 import { useState, useEffect } from "react";
@@ -6,14 +7,14 @@ import ExerciseQuestion from "@/app/components/exercise/ExerciseQuestion";
 import ProgressBar from "@/app/components/util/ProgressBar";
 import QuestionNavigator from "@/app/components/exercise/QuestionNavigator";
 import ExerciseResults from "@/app/components/exercise/ExerciseResults";
+import { apiFetchJson } from "@/lib/api";
+
 import {
   normalizeExercise,
   Exercise,
   UserAnswer,
   PracticeState,
 } from "@/lib/normalizeExercise";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
 
 export default function ExercisePreviewPage() {
   const params = useParams();
@@ -22,7 +23,6 @@ export default function ExercisePreviewPage() {
 
   console.log("🔎 useParams():", params);
   console.log("🔎 exerciseId:", exerciseId);
-  console.log("🔎 API_BASE:", API_BASE);
 
   const [exercise, setExercise] = useState<Exercise | null>(null);
   const [loading, setLoading] = useState(true);
@@ -35,22 +35,14 @@ export default function ExercisePreviewPage() {
 
   useEffect(() => {
     async function fetchExercise() {
-      console.log("📡 Fetching:", `${API_BASE}/api/exercises/${exerciseId}`);
+      console.log("📡 Fetching:", `/api/exercises/${exerciseId}`);
       try {
         setLoading(true);
-        const res = await fetch(`${API_BASE}/api/exercises/${exerciseId}`, {
-          credentials: "include",
-        });
 
-        console.log("📡 Response status:", res.status);
+        const data = await apiFetchJson<{ exercise_set: any }>(
+          `/api/exercises/${exerciseId}`
+        );
 
-        if (!res.ok) {
-          const errText = await res.text();
-          console.error("❌ Fetch failed:", res.status, errText);
-          throw new Error("Failed to load exercise");
-        }
-
-        const data = await res.json();
         console.log("📦 Raw API response:", data);
 
         const set = data.exercise_set;
@@ -60,8 +52,8 @@ export default function ExercisePreviewPage() {
         console.log("✅ Normalized exercise:", normalized);
 
         setExercise(normalized);
-      } catch (err) {
-        console.error("🔥 fetchExercise error:", err);
+      } catch (err: any) {
+        console.error("🔥 fetchExercise error:", err.message || err);
       } finally {
         setLoading(false);
       }
