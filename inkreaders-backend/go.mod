@@ -9,9 +9,11 @@ require (
 	github.com/google/uuid v1.4.0
 	github.com/jackc/pgx/v5 v5.7.5
 	github.com/joho/godotenv v1.5.1
+	golang.org/x/oauth2 v0.31.0
 )
 
 require (
+	cloud.google.com/go/compute/metadata v0.3.0 // indirect
 	github.com/carlmjohnson/versioninfo v0.22.5 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-logr/logr v1.4.1 // indirect

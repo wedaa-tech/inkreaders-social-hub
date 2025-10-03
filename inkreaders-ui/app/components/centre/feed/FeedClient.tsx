@@ -6,6 +6,7 @@ import { useToast } from "../../util/ToastProvider";
 import Composer from "./Composer";
 import PostCard from "./PostCard";
 import { extractImages, extractExternal } from "./helpers";
+import { apiFetchJson } from "@/lib/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
 

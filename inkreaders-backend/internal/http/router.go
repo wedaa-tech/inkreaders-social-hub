@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"context"
 
 	"github.com/bluesky-social/indigo/xrpc"
 	"github.com/go-chi/chi/v5"
@@ -19,8 +20,9 @@ func NewRouter(agent *xrpc.Client, did string, store *db.Store, aiClient ai.Clie
 
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"http://localhost:3000"},
-		AllowedMethods:   []string{"GET", "POST", "OPTIONS", "PATCH"},
-		AllowedHeaders:   []string{"Content-Type", "Authorization"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Requested-With", "X-Admin-Token"},
+		ExposedHeaders:   []string{"Content-Length"},
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))
@@ -38,6 +40,9 @@ func NewRouter(agent *xrpc.Client, did string, store *db.Store, aiClient ai.Clie
 		pdsDefault = "https://bsky.social"
 	}
 	auth := NewAuth(store, box, pdsDefault)
+
+	// start background token refresher (cancellable when server context cancels)
+	go auth.StartTokenRefresher(context.Background())	
 
 	// Root
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
@@ -114,6 +119,13 @@ func NewRouter(agent *xrpc.Client, did string, store *db.Store, aiClient ai.Clie
 	r.Patch("/api/highlights/{id}", auth.WithSession(h.UpdateHighlight))
 	r.Delete("/api/highlights/{id}", auth.WithSession(h.DeleteHighlight))
 
+	// in router.go — Auth routes (add these)
+	r.Get("/api/auth/oauth/{provider}/start", auth.OAuthStart)
+	r.Get("/api/auth/oauth/{provider}/callback", auth.OAuthCallback)
+
+	r.Get("/api/auth/accounts", auth.ListAccounts)
+	r.Post("/api/auth/accounts/unlink", auth.UnlinkAccount)
+	r.Get("/api/admin/needs-reauth", auth.ListNeedsReauth)
 
 	return r
 }

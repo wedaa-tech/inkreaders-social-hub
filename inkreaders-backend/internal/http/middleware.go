@@ -1,74 +1,126 @@
 package http
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"time"
+	"errors"
+	"strings"
+	"log"
+
+	"github.com/google/uuid"
 )
 
-// NOTE: We no longer need SessionMiddleware; Auth already holds Store & Box.
-// type SessionMiddleware struct { ... }  // <-- delete this struct if present
-
+// ResolveSession resolves the ink_sid cookie (session_token) to session + account details.
+// It expects sessions to be stored as (session_token, user_id, expires_at, created_at, last_seen_at)
+// and will prefer to populate account info from the user's Bluesky account (provider='bluesky').
+// Returns an error if session not found or expired.
+// ResolveSession resolves ink_sid -> session+account data with detailed logging.
 func (a *Auth) ResolveSession(r *http.Request) (*SessionData, error) {
-	sid, err := r.Cookie("ink_sid")
-	if err != nil {
-		return nil, err
-	}
+    ctx := r.Context()
 
-	var sd SessionData
-	var encA, encR []byte
+    // 0) cookie
+    c, err := r.Cookie("ink_sid")
+    if err != nil {
+        // named cookie not present
+        // do not spam user errors, just return; keep a clear debug line
+        log.Printf("[auth] %s no ink_sid cookie: %v", r.URL.Path, err)
+        return nil, err
+    }
+    sessTok := strings.TrimSpace(c.Value)
+    if sessTok == "" {
+        log.Printf("[auth] %s empty ink_sid cookie value", r.URL.Path)
+        return nil, errors.New("no session token")
+    }
+    log.Printf("[auth] %s cookie ink_sid=%s", r.URL.Path, sessTok)
 
-	row := a.Store.Pool.QueryRow(r.Context(), `
-	  select a.id, a.did, a.handle, a.pds_base, a.access_jwt, a.refresh_jwt, a.session_expires_at
-	  from sessions s join accounts a on s.account_id = a.id
-	  where s.id = $1
-	`, sid.Value)
+    // 1) session lookup (SCHEMA-QUALIFIED)
+    var userID uuid.UUID
+    var sessExpires time.Time
+    err = a.Store.Pool.QueryRow(ctx, `
+        SELECT user_id, expires_at
+        FROM app.sessions
+        WHERE session_token = $1
+        LIMIT 1
+    `, sessTok).Scan(&userID, &sessExpires)
+    if err != nil {
+        log.Printf("[auth] %s no session for token=%s: %v", r.URL.Path, sessTok, err)
+        return nil, err
+    }
+    log.Printf("[auth] %s session user_id=%s expires_at=%s", r.URL.Path, userID, sessExpires.Format(time.RFC3339))
 
-	if err := row.Scan(&sd.AccountID, &sd.DID, &sd.Handle, &sd.PDSBase, &encA, &encR, &sd.ExpiresAt); err != nil {
-		return nil, err
-	}
+    // 2) expiry
+    now := time.Now()
+    if !sessExpires.IsZero() && now.After(sessExpires) {
+        log.Printf("[auth] %s session expired token=%s (expires=%s now=%s)", r.URL.Path, sessTok, sessExpires, now)
+        // SCHEMA-QUALIFIED delete
+        _, _ = a.Store.Pool.Exec(ctx, `DELETE FROM app.sessions WHERE session_token = $1`, sessTok)
+        return nil, errors.New("session expired")
+    }
 
-	plainA, _ := a.Box.Open(encA)
-	plainR, _ := a.Box.Open(encR)
-	sd.AccessJWT = string(plainA)
-	sd.RefreshJWT = string(plainR)
+    sd := &SessionData{UserID: userID}
 
-	// Refresh if near expiry (5m window)
-	if time.Until(sd.ExpiresAt) < 5*time.Minute {
-		req, _ := http.NewRequestWithContext(r.Context(), "POST", sd.PDSBase+"/xrpc/com.atproto.server.refreshSession", nil)
-		req.Header.Set("Authorization", "Bearer "+sd.RefreshJWT)
-		resp, err := http.DefaultClient.Do(req)
-		if err == nil {
-			defer resp.Body.Close()
-			if resp.StatusCode == 200 {
-				var ses struct {
-					AccessJwt   string `json:"accessJwt"`
-					RefreshJwt  string `json:"refreshJwt"`
-					ActiveUntil string `json:"activeUntil"`
-				}
-				_ = json.NewDecoder(resp.Body).Decode(&ses)
+    // 3) Try bluesky account first (SCHEMA-QUALIFIED)
+    var acctID uuid.UUID
+    var provider, provAcctID string
+    var provData []byte
+    var encAccessB64, encRefreshB64 string
+    var acctExpires time.Time
+    err = a.Store.Pool.QueryRow(ctx, `
+        SELECT id, provider, provider_account_id, provider_data, access_token, refresh_token, expires_at
+        FROM app.accounts
+        WHERE user_id = $1 AND provider = 'bluesky'
+        LIMIT 1
+    `, userID).Scan(&acctID, &provider, &provAcctID, &provData, &encAccessB64, &encRefreshB64, &acctExpires)
+    if err != nil {
+        log.Printf("[auth] %s no bluesky account for user_id=%s: %v (will try any provider)", r.URL.Path, userID, err)
+        // try any account
+        _ = a.Store.Pool.QueryRow(ctx, `
+            SELECT id, provider, provider_account_id, provider_data, access_token, refresh_token, expires_at
+            FROM app.accounts
+            WHERE user_id = $1
+            LIMIT 1
+        `, userID).Scan(&acctID, &provider, &provAcctID, &provData, &encAccessB64, &encRefreshB64, &acctExpires)
+    }
 
-				encAccess, _ := a.Box.Seal([]byte(ses.AccessJwt))
-				encRefresh, _ := a.Box.Seal([]byte(ses.RefreshJwt))
+    if acctID != uuid.Nil {
+        sd.AccountID = acctID
+        // Populate optional fields
+        if len(provData) > 0 {
+            var pd map[string]any
+            _ = json.Unmarshal(provData, &pd)
+            if h, ok := pd["handle"].(string); ok {
+                sd.Handle = h
+            }
+            if p, ok := pd["pds_base"].(string); ok {
+                sd.PDSBase = p
+            }
+        }
+        // Decrypt tokens best-effort
+        if encAccessB64 != "" {
+            if raw, derr := base64.StdEncoding.DecodeString(encAccessB64); derr == nil {
+                if plain, oerr := a.Box.Open(raw); oerr == nil {
+                    sd.AccessJWT = string(plain)
+                }
+            }
+        }
+        if encRefreshB64 != "" {
+            if raw, derr := base64.StdEncoding.DecodeString(encRefreshB64); derr == nil {
+                if plain, oerr := a.Box.Open(raw); oerr == nil {
+                    sd.RefreshJWT = string(plain)
+                }
+            }
+        }
+        if !acctExpires.IsZero() {
+            sd.ExpiresAt = acctExpires
+        }
+    }
 
-				sd.AccessJWT = ses.AccessJwt
-				sd.RefreshJWT = ses.RefreshJwt
-				sd.ExpiresAt = parseActiveUntil(ses.ActiveUntil)
+    // 4) touch last_seen (SCHEMA-QUALIFIED)
+    _, _ = a.Store.Pool.Exec(ctx, `UPDATE app.sessions SET last_seen_at = now() WHERE session_token = $1`, sessTok)
 
-				// Persist new tokens
-				_, _ = a.Store.Pool.Exec(r.Context(), `
-				  update accounts
-				  set access_jwt = $1,
-				      refresh_jwt = $2,
-				      session_expires_at = $3,
-				      updated_at = now()
-				  where id = $4
-				`, encAccess, encRefresh, sd.ExpiresAt, sd.AccountID)
-			}
-		}
-	}
-
-	return &sd, nil
+    return sd, nil
 }
 
 // Require a valid session

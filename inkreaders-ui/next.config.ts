@@ -1,14 +1,14 @@
+// next.config.ts
 import type { NextConfig } from "next";
 
-const API_BASE = process.env.API_BASE || "http://localhost:8080";
-
 const nextConfig: NextConfig = {
+  reactStrictMode: true,
+
   async rewrites() {
     return [
-      // Proxy everything under /api/** except /api/auth/**
       {
-        source: "/api/:path((?!auth).*)", // regex: exclude "auth"
-        destination: `${API_BASE}/api/:path*`,
+        source: "/api/:path*",
+        destination: "http://localhost:8080/api/:path*", // Proxy API to Go backend
       },
     ];
   },

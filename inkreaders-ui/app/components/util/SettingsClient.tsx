@@ -4,7 +4,14 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-type Me = { did: string; handle: string; pds: string };
+type Me = {
+  id: string;
+  email?: string;
+  name?: string;
+  username?: string;
+  has_bluesky?: boolean;
+};
+
 type Profile = {
   did: string;
   handle: string;
@@ -29,15 +36,21 @@ export default function SettingsClient() {
     (async () => {
       setLoading(true);
       try {
-        const r1 = await fetch(`${API}/api/auth/me`, { credentials: "include" });
+        const r1 = await fetch(`${API}/api/auth/me`, {
+          credentials: "include",
+        });
         if (r1.ok) setMe(await r1.json());
         else setMe(null);
 
         if (r1.ok) {
-          const r2 = await fetch(`${API}/api/profile`, { credentials: "include" });
+          const r2 = await fetch(`${API}/api/profile`, {
+            credentials: "include",
+          });
           if (r2.ok) setProfile(await r2.json());
 
-          const r3 = await fetch(`${API}/api/prefs`, { credentials: "include" });
+          const r3 = await fetch(`${API}/api/prefs`, {
+            credentials: "include",
+          });
           if (r3.ok) setPrefs(await r3.json());
         }
       } finally {
@@ -50,7 +63,10 @@ export default function SettingsClient() {
     router.push("/connect-bsky");
   }
   async function disconnectBluesky() {
-    await fetch(`${API}/api/auth/logout`, { method: "POST", credentials: "include" });
+    await fetch(`${API}/api/auth/logout`, {
+      method: "POST",
+      credentials: "include",
+    });
     window.location.reload();
   }
   async function saveProfile(p: Partial<Profile>) {
@@ -76,41 +92,28 @@ export default function SettingsClient() {
   }
 
   async function syncFromRemote() {
-  await fetch(`${API}/api/profile/sync-from-remote`, { method: "POST", credentials: "include" });
-  // refetch
-  const r2 = await fetch(`${API}/api/profile`, { credentials: "include" });
-  if (r2.ok) setProfile(await r2.json());
-}
+    await fetch(`${API}/api/profile/sync-from-remote`, {
+      method: "POST",
+      credentials: "include",
+    });
+    // refetch
+    const r2 = await fetch(`${API}/api/profile`, { credentials: "include" });
+    if (r2.ok) setProfile(await r2.json());
+  }
 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Settings</h1>
 
       {/* Bluesky connection */}
-      <section className="rounded-2xl border border-gray-200 bg-white p-4">
-        <h2 className="text-lg font-semibold">Bluesky Connection</h2>
+      <section>
+        <h2>Bluesky Connection</h2>
         {!me ? (
-          <div className="mt-2 flex items-center justify-between">
-            <p className="text-gray-600">Not connected.</p>
-            <button
-              onClick={connectBluesky}
-              className="rounded-lg bg-[color:var(--color-brand)] px-3 py-1 text-white"
-            >
-              Connect Bluesky
-            </button>
-          </div>
+          <p>Please sign in with Google first.</p>
+        ) : !me.has_bluesky ? (
+          <button onClick={connectBluesky}>Connect Bluesky</button>
         ) : (
-          <div className="mt-2 flex items-center justify-between">
-            <div className="text-gray-700">
-              Connected as <strong>{me.handle}</strong> ({me.did})
-            </div>
-            <button
-              onClick={disconnectBluesky}
-              className="rounded-lg border px-3 py-1 hover:bg-gray-50"
-            >
-              Disconnect
-            </button>
-          </div>
+          <button onClick={disconnectBluesky}>Disconnect Bluesky</button>
         )}
       </section>
 
@@ -118,7 +121,9 @@ export default function SettingsClient() {
       <section className="rounded-2xl border border-gray-200 bg-white p-4">
         <h2 className="text-lg font-semibold">Profile</h2>
         {!me ? (
-          <p className="mt-2 text-gray-600">Connect Bluesky to manage profile.</p>
+          <p className="mt-2 text-gray-600">
+            Connect Bluesky to manage profile.
+          </p>
         ) : (
           <>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -189,9 +194,12 @@ export default function SettingsClient() {
           >
             Following (You)
           </button>
-          <button onClick={syncFromRemote} className="rounded-lg border px-3 py-1 hover:bg-gray-50">
-  Sync from Bluesky
-</button>
+          <button
+            onClick={syncFromRemote}
+            className="rounded-lg border px-3 py-1 hover:bg-gray-50"
+          >
+            Sync from Bluesky
+          </button>
         </div>
       </section>
     </div>

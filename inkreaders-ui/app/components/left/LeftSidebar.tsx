@@ -1,60 +1,72 @@
+// app/left/LeftSidebar.tsx
 "use client";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useSession, signOut } from "next-auth/react";
 
 import Modal from "../ui/Modal";
 import ConnectBlueskyForm from "@/app/bluesky/ConnectBlueskyForm";
 import SignInModal from "@/app/components/auth/SignInModal";
+import { apiFetchJson, apiFetch } from "@/lib/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
 
 type Me = {
-  did: string;
-  handle: string;
-  pds: string;
+  id: string;
+  email?: string;
+  name?: string;
+  username?: string;
+  handle?: string;
   avatar_url?: string;
-  display_name?: string;
 };
 
 export default function LeftSidebar() {
-  const { data: session, status } = useSession();
   const [me, setMe] = useState<Me | null>(null);
   const [loadingMe, setLoadingMe] = useState(true);
   const [showConnectModal, setShowConnectModal] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
 
+  // Fetch user session from backend
   useEffect(() => {
     let alive = true;
     (async () => {
-      try {
-        const res = await fetch(`${API_BASE}/api/auth/me`, {
-          credentials: "include",
-        });
-        if (!alive) return;
-        if (res.ok) setMe(await res.json());
-        else setMe(null);
-      } catch {
-        if (alive) setMe(null);
-      } finally {
-        if (alive) setLoadingMe(false);
-      }
-    })();
+  try {
+    const data = await apiFetchJson("/api/auth/me");
+    if (!alive) return;
+    setMe(data);
+  } catch {
+    if (alive) setMe(null);
+  } finally {
+    if (alive) setLoadingMe(false);
+  }
+})();
     return () => {
       alive = false;
     };
   }, []);
 
+  // Bluesky disconnect
   async function logoutBluesky() {
     try {
-      await fetch(`${API_BASE}/api/auth/logout`, {
-        method: "POST",
-        credentials: "include",
-      });
+      await apiFetch("/api/auth/accounts/unlink", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ provider: "bluesky" }),
+});
+;
     } catch {}
     setMe(null);
   }
+
+  // Google logout (same as logout, clears ink_sid)
+async function handleLogout() {
+  try {
+    await apiFetch("/api/auth/logout", { method: "POST" });
+  } catch {}
+  setMe(null);
+  window.location.href = "/";
+}
+
 
   const NAV = [
     { label: "Home", icon: "🏠", href: "/" },
@@ -64,13 +76,10 @@ export default function LeftSidebar() {
     {
       label: "Profile",
       icon: "👤",
-      href: me ? `/u/${me.handle}` : "/settings",
+      href: me ? `/u/${me.username ?? me.handle ?? "me"}` : "/settings",
     },
     { label: "Settings", icon: "⚙️", href: "/settings" },
   ];
-
-  const isOAuth = status === "authenticated";
-  const userName = session?.user?.name || session?.user?.email || "You";
 
   return (
     <nav className="space-y-4">
@@ -113,7 +122,7 @@ export default function LeftSidebar() {
 
       {/* Profile mini-card */}
       <div className="rounded-2xl border border-gray-200 bg-white p-4">
-        {status === "loading" || loadingMe ? (
+        {loadingMe ? (
           <div className="flex items-center gap-3 animate-pulse">
             <div className="h-10 w-10 rounded-full bg-gray-200" />
             <div className="flex-1 space-y-2">
@@ -121,7 +130,7 @@ export default function LeftSidebar() {
               <div className="h-3 w-1/3 rounded bg-gray-200" />
             </div>
           </div>
-        ) : !isOAuth ? (
+        ) : !me ? (
           <div className="space-y-3">
             <div>
               <div className="font-semibold">Welcome</div>
@@ -139,22 +148,20 @@ export default function LeftSidebar() {
         ) : (
           <div className="space-y-3">
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-full bg-gray-200" />
+              <img
+                src={me.avatar_url || "/default-avatar.png"}
+                alt="avatar"
+                className="h-10 w-10 rounded-full bg-gray-200"
+              />
               <div className="min-w-0">
-                <p className="truncate font-semibold">{userName}</p>
-                {me ? (
-                  <p className="truncate text-sm text-gray-500">
-                    @{me.handle} (Bluesky)
-                  </p>
-                ) : (
-                  <p className="truncate text-sm text-gray-500">
-                    Not connected to Bluesky
-                  </p>
-                )}
+                <p className="truncate font-semibold">{me.name ?? me.email}</p>
+                <p className="truncate text-sm text-gray-500">
+                  {me.username ? `@${me.username}` : me.email}
+                </p>
               </div>
             </div>
             <button
-              onClick={() => signOut({ callbackUrl: "/" })}
+              onClick={handleLogout}
               className="w-full rounded-lg border px-3 py-2 text-sm text-gray-600 hover:bg-gray-50"
               type="button"
             >
@@ -195,7 +202,10 @@ export default function LeftSidebar() {
         </Modal>
       )}
 
-      <SignInModal open={showLoginModal} onClose={() => setShowLoginModal(false)} />
+      <SignInModal
+        open={showLoginModal}
+        onClose={() => setShowLoginModal(false)}
+      />
     </nav>
   );
 }

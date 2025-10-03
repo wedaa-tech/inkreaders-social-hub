@@ -1,0 +1,240 @@
+{
+  "info": {
+    "name": "InkReaders Auth API (Enhanced)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "ink_sid",
+      "value": ""
+    },
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080"
+    }
+  ],
+  "item": [
+    {
+      "name": "Login",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"identifier\": \"your-handle-or-email\",\n  \"appPassword\": \"your-bluesky-app-password\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/auth/login",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "auth",
+            "login"
+          ]
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "// Extract ink_sid cookie from Set-Cookie header",
+              "var setCookie = pm.response.headers.get('Set-Cookie');",
+              "if (setCookie) {",
+              "  var match = setCookie.match(/ink_sid=([^;]+)/);",
+              "  if (match) {",
+              "    pm.collectionVariables.set('ink_sid', match[1]);",
+              "    console.log('Saved ink_sid:', match[1]);",
+              "  }",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Me",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Cookie",
+            "value": "ink_sid={{ink_sid}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/auth/me",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "auth",
+            "me"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Logout",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Cookie",
+            "value": "ink_sid={{ink_sid}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/auth/logout",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "auth",
+            "logout"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "// Clear cookie variable after logout",
+              "pm.collectionVariables.unset('ink_sid');",
+              "console.log('Cleared ink_sid after logout');"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "List Accounts",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Cookie",
+            "value": "ink_sid={{ink_sid}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/auth/accounts",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "auth",
+            "accounts"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Unlink Account",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Cookie",
+            "value": "ink_sid={{ink_sid}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"provider\": \"bluesky\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/auth/accounts/unlink",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "auth",
+            "accounts",
+            "unlink"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Admin Needs Reauth",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-Admin-Token",
+            "value": "your_admin_token"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/admin/needs-reauth",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "admin",
+            "needs-reauth"
+          ]
+        }
+      }
+    },
+    {
+      "name": "OAuth Start (Google)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}/api/auth/oauth/google/start",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "auth",
+            "oauth",
+            "google",
+            "start"
+          ]
+        }
+      }
+    },
+    {
+      "name": "OAuth Start (GitHub)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}/api/auth/oauth/github/start",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "auth",
+            "oauth",
+            "github",
+            "start"
+          ]
+        }
+      }
+    }
+  ]
+}
