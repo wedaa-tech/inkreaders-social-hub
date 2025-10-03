@@ -347,171 +347,261 @@ func fetchUserInfo(provider string, tok *oauth2.Token) (*UserInfo, error) {
 
 // --- OAuth Start & Callback ---
 
+// func (a *Auth) OAuthStart(w http.ResponseWriter, r *http.Request) {
+// 	provider := chi.URLParam(r, "provider")
+// 	cfg, err := oauthConfigFor(provider)
+// 	if err != nil {
+// 		http.Error(w, "oauth config error: "+err.Error(), http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	state, err := oauthState()
+// 	if err != nil {
+// 		http.Error(w, "failed to create state", http.StatusInternalServerError)
+// 		return
+// 	}
+
+// 	// preserve SPA preference if present
+// 	respPref := r.URL.Query().Get("response") // e.g. "json"
+// 	val := provider + "|" + state
+// 	if respPref != "" {
+// 		val = val + "|" + respPref
+// 	}
+
+// 	http.SetCookie(w, &http.Cookie{
+// 		Name:     "oauth_state",
+// 		Value:    val,
+// 		Path:     "/",
+// 		HttpOnly: true,
+// 		Secure:   wantSecureCookie(r),
+// 		Expires:  time.Now().Add(10 * time.Minute),
+// 		SameSite: http.SameSiteLaxMode,
+// 	})
+
+// 	opts := []oauth2.AuthCodeOption{}
+// 	if provider == "google" {
+// 		opts = append(opts, oauth2.AccessTypeOffline)
+// 	}
+// 	url := cfg.AuthCodeURL(state, opts...)
+// 	http.Redirect(w, r, url, http.StatusFound)
+// }
+
 func (a *Auth) OAuthStart(w http.ResponseWriter, r *http.Request) {
-	provider := chi.URLParam(r, "provider")
-	cfg, err := oauthConfigFor(provider)
-	if err != nil {
-		http.Error(w, "oauth config error: "+err.Error(), http.StatusBadRequest)
-		return
-	}
+    provider := chi.URLParam(r, "provider")
 
-	state, err := oauthState()
-	if err != nil {
-		http.Error(w, "failed to create state", http.StatusInternalServerError)
-		return
-	}
+    // --- LOGIC: Capture redirect_to and Origin Host ---
+    // 1. Get the desired return URL path (e.g., /exercises/mine).
+    redirectTo := r.URL.Query().Get("redirect_to")
+    if redirectTo == "" {
+        redirectTo = "/"
+    }
+    
+    // 2. Capture the host/origin of the client that initiated the request (e.g., localhost:3000).
+    // Use the "X-Forwarded-Host" header if present (common in proxies/production), 
+    // otherwise fall back to r.Host (common in local dev).
+    clientHost := r.Header.Get("X-Forwarded-Host")
+    if clientHost == "" {
+        clientHost = r.Host
+    }
+    
+    respPref := r.URL.Query().Get("resp_pref")
 
-	// preserve SPA preference if present
-	respPref := r.URL.Query().Get("response") // e.g. "json"
-	val := provider + "|" + state
-	if respPref != "" {
-		val = val + "|" + respPref
-	}
+    cfg, err := oauthConfigFor(provider)
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusBadRequest)
+        return
+    }
 
-	http.SetCookie(w, &http.Cookie{
-		Name:     "oauth_state",
-		Value:    val,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   wantSecureCookie(r),
-		Expires:  time.Now().Add(10 * time.Minute),
-		SameSite: http.SameSiteLaxMode,
-	})
+    // 3. Generate random state for CSRF.
+    b := make([]byte, 16)
+    crand.Read(b)
+    plainState := base64.URLEncoding.EncodeToString(b)
+    
+    // 4. Embed all necessary data into the state, securely.
+    stateData := map[string]string{
+        "csrf": plainState,         // CSRF token
+        "redirect": redirectTo,     // Target path after successful login
+        "resp_pref": respPref,      // Response preference (e.g., "json" for popups)
+        "client_host": clientHost,  // Client's Host/Port (e.g., localhost:3000)
+    }
+    stateJSON, err := json.Marshal(stateData)
+    if err != nil {
+        log.Printf("error marshalling state: %v", err)
+        http.Error(w, "internal error", http.StatusInternalServerError)
+        return
+    }
 
-	opts := []oauth2.AuthCodeOption{}
-	if provider == "google" {
-		opts = append(opts, oauth2.AccessTypeOffline)
-	}
-	url := cfg.AuthCodeURL(state, opts...)
-	http.Redirect(w, r, url, http.StatusFound)
+    // 5. Encrypt the state data
+    sealedState, err := a.Box.Seal(stateJSON)
+    if err != nil {
+        log.Printf("error sealing state: %v", err)
+        http.Error(w, "internal error", http.StatusInternalServerError)
+        return
+    }
+    encodedState := base64.StdEncoding.EncodeToString(sealedState)
+
+    // Redirect to the OAuth provider's authorization page.
+    url := cfg.AuthCodeURL(encodedState, oauth2.AccessTypeOffline)
+    http.Redirect(w, r, url, http.StatusTemporaryRedirect)
 }
 
 func (a *Auth) OAuthCallback(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	provider := chi.URLParam(r, "provider")
-	cfg, err := oauthConfigFor(provider)
-	if err != nil {
-		http.Error(w, "oauth config error: "+err.Error(), http.StatusBadRequest)
-		return
-	}
+    ctx := r.Context()
+    provider := chi.URLParam(r, "provider")
+    cfg, err := oauthConfigFor(provider)
+    if err != nil {
+        http.Error(w, "oauth config error: "+err.Error(), http.StatusBadRequest)
+        return
+    }
 
-	// read state cookie
-	sc, err := r.Cookie("oauth_state")
-	if err != nil {
-		http.Error(w, "missing state cookie", http.StatusBadRequest)
-		return
-	}
-	parts := strings.SplitN(sc.Value, "|", 3)
-	if len(parts) < 2 || parts[0] != provider {
-		http.Error(w, "invalid state cookie", http.StatusBadRequest)
-		return
-	}
-	savedState := parts[1]
-	savedRespPref := ""
-	if len(parts) == 3 {
-		savedRespPref = parts[2]
-	}
-	if r.URL.Query().Get("state") != savedState {
-		http.Error(w, "state mismatch", http.StatusBadRequest)
-		return
-	}
+    // --- START: MODIFIED STATE PARSING (Guarantees redirect to client app port) ---
 
-	// exchange code
-	code := r.URL.Query().Get("code")
-	if code == "" {
-		http.Error(w, "missing code", http.StatusBadRequest)
-		return
-	}
-	tok, err := cfg.Exchange(ctx, code)
-	if err != nil {
-		http.Error(w, "token exchange failed: "+err.Error(), http.StatusBadGateway)
-		return
-	}
+    // 1. Initialize variables for final actions with safe defaults.
+    redirectPath := "/" 
+    // Default client origin, ensuring we land back on the frontend app (port 3000)
+    clientOrigin := "http://localhost:3000" 
+    finalRespPref := ""
+    
+    // Get the state parameter from the request (this is the ENCRYPTED version)
+    encodedState := r.URL.Query().Get("state")
+    
+    // Attempt to decrypt and extract data from the state
+    if encodedState != "" {
+        sealedState, dErr := base64.StdEncoding.DecodeString(encodedState)
+        if dErr == nil {
+            stateJSON, oErr := a.Box.Open(sealedState)
+            if oErr == nil {
+                var stateData map[string]string
+                if uErr := json.Unmarshal(stateJSON, &stateData); uErr == nil {
+                    
+                    // Extract the redirect path
+                    if path, ok := stateData["redirect"]; ok && path != "" {
+                        redirectPath = path
+                    }
+                    
+                    // Extract the client host (e.g., localhost:3000)
+                    if host, ok := stateData["client_host"]; ok && host != "" {
+                        // Determine the scheme (HTTP for local, HTTPS for others is a safe assumption)
+                        if strings.HasPrefix(host, "localhost") || strings.HasPrefix(host, "127.0.0.1") {
+                            clientOrigin = "http://" + host
+                        } else {
+                            // Check if the request itself was secure to determine scheme
+                            scheme := "http"
+                            if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+                                scheme = "https"
+                            }
+                            clientOrigin = scheme + "://" + host
+                        }
+                    }
 
-	// fetch profile
-	userInfo, err := fetchUserInfo(provider, tok)
-	if err != nil {
-		http.Error(w, "failed to fetch user info: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	email, name, avatar, providerAccountID := userInfo.Email, userInfo.Name, userInfo.Avatar, userInfo.ID
+                    // Extract response preference (e.g., "json" for popups)
+                    if pref, ok := stateData["resp_pref"]; ok && pref != "" {
+                        finalRespPref = pref
+                    }
+                }
+            }
+        }
+    }
+    
+    // Combine origin and path for the final absolute URL
+    finalRedirectURL := clientOrigin + redirectPath
+    
+    // --- END: MODIFIED STATE PARSING ---
 
-	// upsert user
-	var userID uuid.UUID
-	err = a.Store.Pool.QueryRow(ctx, `SELECT user_id FROM app.accounts WHERE provider=$1 AND provider_account_id=$2`, provider, providerAccountID).Scan(&userID)
-	if err != nil {
-		if email != "" {
-			_ = a.Store.Pool.QueryRow(ctx, `SELECT id FROM app.users WHERE email=$1`, email).Scan(&userID)
-		}
-		if userID == uuid.Nil {
-			_ = a.Store.Pool.QueryRow(ctx, `INSERT INTO app.users (email, name, username, avatar_url, created_at, updated_at) VALUES ($1,$2,$3,$4, now(), now()) RETURNING id`, email, name, fallbackUsername(name), avatar).Scan(&userID)
-		}
-	}
+    // exchange code
+    code := r.URL.Query().Get("code")
+    if code == "" {
+        http.Error(w, "missing code", http.StatusBadRequest)
+        return
+    }
+    tok, err := cfg.Exchange(ctx, code)
+    if err != nil {
+        http.Error(w, "token exchange failed: "+err.Error(), http.StatusBadGateway)
+        return
+    }
 
-	// store tokens (encrypted)
-	encAccess := ""
-	encRefresh := ""
-	if tok.AccessToken != "" {
-		if sealed, err := a.Box.Seal([]byte(tok.AccessToken)); err == nil {
-			encAccess = base64.StdEncoding.EncodeToString(sealed)
-		}
-	}
-	if tok.RefreshToken != "" {
-		if sealed, err := a.Box.Seal([]byte(tok.RefreshToken)); err == nil {
-			encRefresh = base64.StdEncoding.EncodeToString(sealed)
-		}
-	}
+    // fetch profile
+    userInfo, err := fetchUserInfo(provider, tok)
+    if err != nil {
+        http.Error(w, "failed to fetch user info: "+err.Error(), http.StatusInternalServerError)
+        return
+    }
+    email, name, avatar, providerAccountID := userInfo.Email, userInfo.Name, userInfo.Avatar, userInfo.ID
 
-	_, _ = a.Store.Pool.Exec(ctx, `INSERT INTO app.accounts (user_id, provider, provider_account_id, access_token, refresh_token, expires_at, provider_data, created_at, updated_at)
-	 VALUES ($1,$2,$3,$4,$5,$6,$7, now(), now())
-	 ON CONFLICT (provider, provider_account_id) DO UPDATE SET access_token=$4, refresh_token=$5, expires_at=$6, provider_data=$7, updated_at=now()`,
-		userID, provider, providerAccountID, encAccess, encRefresh, tok.Expiry, toJSONB(userInfo))
+    // upsert user
+    var userID uuid.UUID
+    err = a.Store.Pool.QueryRow(ctx, `SELECT user_id FROM app.accounts WHERE provider=$1 AND provider_account_id=$2`, provider, providerAccountID).Scan(&userID)
+    if err != nil {
+        if email != "" {
+            _ = a.Store.Pool.QueryRow(ctx, `SELECT id FROM app.users WHERE email=$1`, email).Scan(&userID)
+        }
+        if userID == uuid.Nil {
+            _ = a.Store.Pool.QueryRow(ctx, `INSERT INTO app.users (email, name, username, avatar_url, created_at, updated_at) VALUES ($1,$2,$3,$4, now(), now()) RETURNING id`, email, name, fallbackUsername(name), avatar).Scan(&userID)
+        }
+    }
 
-	// create session
-	sessionToken := uuid.New().String()
-	sessionExpiry := time.Now().Add(30 * 24 * time.Hour)
-	if _, err := a.Store.Pool.Exec(ctx, `INSERT INTO app.sessions (session_token, user_id, expires_at, created_at, last_seen_at) VALUES ($1,$2,$3, now(), now())`, sessionToken, userID, sessionExpiry); err != nil {
+    // store tokens (encrypted)
+    encAccess := ""
+    encRefresh := ""
+    if tok.AccessToken != "" {
+        if sealed, err := a.Box.Seal([]byte(tok.AccessToken)); err == nil {
+            encAccess = base64.StdEncoding.EncodeToString(sealed)
+        }
+    }
+    if tok.RefreshToken != "" {
+        if sealed, err := a.Box.Seal([]byte(tok.RefreshToken)); err == nil {
+            encRefresh = base64.StdEncoding.EncodeToString(sealed)
+        }
+    }
+
+    _, _ = a.Store.Pool.Exec(ctx, `INSERT INTO app.accounts (user_id, provider, provider_account_id, access_token, refresh_token, expires_at, provider_data, created_at, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7, now(), now())
+     ON CONFLICT (provider, provider_account_id) DO UPDATE SET access_token=$4, refresh_token=$5, expires_at=$6, provider_data=$7, updated_at=now()`,
+        userID, provider, providerAccountID, encAccess, encRefresh, tok.Expiry, toJSONB(userInfo))
+
+    // create session
+    sessionToken := uuid.New().String()
+    sessionExpiry := time.Now().Add(30 * 24 * time.Hour)
+    if _, err := a.Store.Pool.Exec(ctx, `INSERT INTO app.sessions (session_token, user_id, expires_at, created_at, last_seen_at) VALUES ($1,$2,$3, now(), now())`, sessionToken, userID, sessionExpiry); err != nil {
     log.Printf("[auth] failed to insert session: %v", err)
-	}
+    }
 
 
-	// set cookie
-	c := &http.Cookie{Name: "ink_sid", Value: sessionToken, Path: "/", HttpOnly: true, Secure: wantSecureCookie(r), SameSite: http.SameSiteLaxMode, Expires: sessionExpiry}
-	if d := os.Getenv("COOKIE_DOMAIN"); d != "" {
-		c.Domain = d
-	}
-	http.SetCookie(w, c)
+    // set cookie
+    c := &http.Cookie{Name: "ink_sid", Value: sessionToken, Path: "/", HttpOnly: true, Secure: wantSecureCookie(r), SameSite: http.SameSiteLaxMode, Expires: sessionExpiry}
+    if d := os.Getenv("COOKIE_DOMAIN"); d != "" {
+        c.Domain = d
+    }
+    http.SetCookie(w, c)
 
-	// clear oauth_state
-	http.SetCookie(w, &http.Cookie{Name: "oauth_state", Value: "", Path: "/", HttpOnly: true, Expires: time.Now().Add(-1 * time.Hour)})
+    // clear oauth_state (Clears the old, redundant cookie)
+    http.SetCookie(w, &http.Cookie{Name: "oauth_state", Value: "", Path: "/", HttpOnly: true, Expires: time.Now().Add(-1 * time.Hour)})
 
-	// respond
-	if savedRespPref == "json" {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		fmt.Fprintf(w, `<!doctype html>
-		<html>
-		<head><meta charset="utf-8"></head>
-		<body>
-		<script>
-		console.log("OAuth popup sending postMessage to opener");
-		try {
-			window.opener.postMessage({ type: 'oauth-success' }, window.opener.location.origin);
-		} catch(e) {
-			console.error("postMessage failed", e);
-		}
-		window.close();
-		</script>
-		<p>Authentication complete — you can close this window.</p>
-		</body>
-		</html>`)
-		return
-	}
+    // respond for JSON/Popup flow
+    if finalRespPref == "json" { 
+        w.Header().Set("Content-Type", "text/html; charset=utf-8")
+        fmt.Fprintf(w, `<!doctype html>
+        <html>
+        <head><meta charset="utf-8"></head>
+        <body>
+        <script>
+        console.log("OAuth popup sending postMessage to opener");
+        try {
+            window.opener.postMessage({ type: 'oauth-success' }, window.opener.location.origin);
+        } catch(e) {
+            console.error("postMessage failed", e);
+        }
+        window.close();
+        </script>
+        <p>Authentication complete — you can close this window.</p>
+        </body>
+        </html>`)
+        return
+    }
 
-	redirectTarget := os.Getenv("OAUTH_SUCCESS_REDIRECT")
-	if redirectTarget == "" {
-		redirectTarget = "http://localhost:3000/"
-	}
-	http.Redirect(w, r, redirectTarget, http.StatusFound)
+    // Final Redirect: Use the extracted absolute URL (e.g., http://localhost:3000/exercises/mine)
+    log.Printf("[auth] final redirect to: %s", finalRedirectURL)
+    http.Redirect(w, r, finalRedirectURL, http.StatusFound)
 }
 
 // --- Account management ---
