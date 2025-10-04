@@ -4,7 +4,10 @@
 import React, { useState } from "react";
 import { FaSpinner } from "@/app/create/components/icons";
 import PreviewCard from "@/app/create/components/PreviewCard";
-import { normalizeExercise, Exercise as NormalizedExercise } from "@/lib/normalizeExercise";
+import {
+  normalizeExercise,
+  Exercise as NormalizedExercise,
+} from "@/lib/normalizeExercise";
 import { useToast } from "@/app/components/util/ToastProvider";
 import QuestionPreview from "./QuestionPreview";
 import { apiFetchJson } from "@/lib/api"; // ✅ central fetch helper (no API_BASE anymore)
@@ -18,23 +21,40 @@ export default function ExerciseGenerator() {
   async function handleGenerate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
+    
+    // Extract values from form
+    const title = form.get("title")?.toString() || "";
+    const topic = form.get("topic")?.toString() || "";
+    const format = form.get("format")?.toString() || "mcq";
+    const count = Number(form.get("count") || 5);
+    const difficulty = form.get("difficulty")?.toString() || "mixed";
+    const language = (form.get("language")?.toString() as "en" | "hi") || "en";
+
+    // ✅ NEW: Assemble the high-quality, efficient prompt
+    const llm_prompt = assemblePrompt(topic, format, count, difficulty, language);
+
     const body = {
-      title: form.get("title")?.toString() || "",
-      topic: form.get("topic")?.toString() || "",
-      formats: [form.get("format")?.toString() || "mcq"],
-      count: Number(form.get("count") || 5),
-      difficulty: form.get("difficulty")?.toString() || "mixed",
-      language: (form.get("language")?.toString() as "en" | "hi") || "en",
+      title,
+      topic,
+      formats: [format], // Keep this for server-side type hinting
+      count, // Keep this for server-side validation/structure
+      difficulty,
+      language,
       source: { type: "topic" },
+      
+      // ✅ NEW: Include the generated prompt explicitly
+      llm_prompt, 
     };
 
     setLoading(true);
     try {
       console.log("📡 Generating exercise:", body);
+      // Your API call to the server
       const data = await apiFetchJson<{ exercise_set: any }>("/api/exercises/generate", {
         method: "POST",
         body: JSON.stringify(body),
       });
+      // ... (rest of the try block remains the same)
       console.log("📦 Raw API response (generate):", data);
 
       const normalized = normalizeExercise(data.exercise_set);
@@ -45,6 +65,7 @@ export default function ExerciseGenerator() {
       push({ variant: "success", message: "Generated exercise preview" });
     } catch (err: any) {
       console.error("🔥 Generate failed:", err);
+      // ... (rest of the catch block remains the same)
       push({
         variant: "error",
         title: "Generate failed",
@@ -78,10 +99,55 @@ export default function ExerciseGenerator() {
     }
   }
 
+  // Add this utility function inside ExerciseGenerator.tsx, before the component definition.
+  function assemblePrompt(
+    topic: string,
+    format: string,
+    count: number,
+    difficulty: string,
+    language: string
+  ): string {
+    // 1. Role/Context: Define the persona for high-quality output.
+    const role =
+      "You are an expert educational content generator and test-prep specialist.";
+
+    // 2. Instruction: The specific command.
+    const instruction = `Your task is to generate an exercise set.`;
+
+    // 3. Constraints/Format: Detailed rules and structure.
+    let formatInstruction = "";
+    if (format === "mcq") {
+      formatInstruction = `The questions must be **Multiple Choice Questions (MCQ)**, each with exactly 4 options.`;
+    } else if (format === "true_false") {
+      formatInstruction = `The questions must be **True/False** statements.`;
+    } else if (format === "fill_blank") {
+      formatInstruction = `The questions must be **Fill in the Blank** statements, where the correct answer is the word or short phrase that completes the blank.`;
+    } else if (format === "match") {
+      formatInstruction = `The questions must be a **Matching** exercise, providing two corresponding lists (List A and List B) that need to be paired.`;
+    }
+
+    // 4. Assembled Prompt: Combine all parts.
+    return `
+${role} ${instruction}
+The exercise must contain exactly **${count} questions**.
+The subject of the exercise is: **${topic}**.
+The required difficulty level is **${difficulty}**.
+The response must be in the **${
+      language === "en" ? "English" : "Hindi"
+    }** language.
+
+${formatInstruction}
+
+You must return the entire exercise set in the required JSON format as defined by the API schema, with the 'exercise_set' field containing the questions, answers, and explanations. Do not include any other text or commentary outside of the JSON.
+`.trim();
+  }
+
   return (
     <section className="space-y-6">
       <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-md">
-        <h3 className="text-xl font-semibold text-gray-800 mb-4">Generate an Exercise</h3>
+        <h3 className="text-xl font-semibold text-gray-800 mb-4">
+          Generate an Exercise
+        </h3>
         <form
           onSubmit={handleGenerate}
           className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
@@ -99,7 +165,9 @@ export default function ExerciseGenerator() {
           />
 
           <div className="flex flex-col">
-            <label className="text-sm font-medium text-gray-600 mb-1">Format</label>
+            <label className="text-sm font-medium text-gray-600 mb-1">
+              Format
+            </label>
             <select
               name="format"
               defaultValue="mcq"
@@ -112,7 +180,9 @@ export default function ExerciseGenerator() {
             </select>
           </div>
           <div className="flex flex-col">
-            <label className="text-sm font-medium text-gray-600 mb-1">Count</label>
+            <label className="text-sm font-medium text-gray-600 mb-1">
+              Count
+            </label>
             <input
               name="count"
               type="number"
@@ -123,7 +193,9 @@ export default function ExerciseGenerator() {
             />
           </div>
           <div className="flex flex-col">
-            <label className="text-sm font-medium text-gray-600 mb-1">Difficulty</label>
+            <label className="text-sm font-medium text-gray-600 mb-1">
+              Difficulty
+            </label>
             <select
               name="difficulty"
               defaultValue="mixed"
@@ -136,7 +208,9 @@ export default function ExerciseGenerator() {
             </select>
           </div>
           <div className="flex flex-col">
-            <label className="text-sm font-medium text-gray-600 mb-1">Language</label>
+            <label className="text-sm font-medium text-gray-600 mb-1">
+              Language
+            </label>
             <select
               name="language"
               defaultValue="en"
@@ -214,7 +288,9 @@ export default function ExerciseGenerator() {
           Preview as Post
         </h4>
         <PreviewCard
-          title={exercise ? exercise.title || "Exercise Preview" : "Exercise Preview"}
+          title={
+            exercise ? exercise.title || "Exercise Preview" : "Exercise Preview"
+          }
           subtitle={
             exercise
               ? `${exercise.format?.toUpperCase()} • ${exercise.difficulty}`
